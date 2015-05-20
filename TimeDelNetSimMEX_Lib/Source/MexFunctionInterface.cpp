@@ -8,6 +8,7 @@
 #include "..\Headers\NeuronSim.hpp"
 #include "..\Headers\MexMem.hpp"
 
+
 using namespace std;
 
 int getOutputControl(char* OutputControlSequence){
@@ -460,9 +461,13 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, mxArray *prhs[]){
 		FinalStateOutput,
 		InitialStateOutput);
 	chrono::system_clock::time_point TEnd = chrono::system_clock::now();
+
+#ifdef MEX_LIB
 	mexPrintf("The Time taken = %d milliseconds", chrono::duration_cast<chrono::milliseconds>(TEnd - TStart).count());
 	mexEvalString("drawnow");
-
+#elif defined MEX_EXE
+	printf("The Time taken = %d milliseconds\n", chrono::duration_cast<chrono::milliseconds>(TEnd - TStart).count());
+#endif
 	mwSize StructArraySize[2] = { 1, 1 };
 	
 	plhs[0] = putOutputToMatlabStruct(PureOutput);

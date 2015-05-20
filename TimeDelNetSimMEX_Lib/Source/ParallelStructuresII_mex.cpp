@@ -468,8 +468,8 @@ void SimulateParallel(
 	// they are typically of the form of some processed version of an input vector
 	// thus they dont change with time and are prima facie not used to generate output
 
-	MexVector<int> AuxArray(M);					    // Auxillary Array that is an indirection between Network
-												    // and an array sorted lexicographically by (NEnd, NStart)
+	MexVector<int> AuxArray(M);						    // Auxillary Array that is an indirection between Network
+													    // and an array sorted lexicographically by (NEnd, NStart)
 	MexVector<size_t> PreSynNeuronSectionBeg(N, -1);	// PreSynNeuronSectionBeg[j] Maintains the list of the 
 														// index of the first synapse in Network with NStart = j+1
 	MexVector<size_t> PreSynNeuronSectionEnd(N, -1);	// PostSynNeuronSectionEnd[j] Maintains the list of the 
@@ -575,7 +575,7 @@ void SimulateParallel(
 			#ifdef MEX_LIB
 				mexErrMsgTxt("Epileptic shit");
 			#elif defined MEX_EXE
-				printf("Epilepsy Nyuh!!");
+				printf("Epilepsy Nyuh!!\n");
 			#endif
 				return;
 			}
