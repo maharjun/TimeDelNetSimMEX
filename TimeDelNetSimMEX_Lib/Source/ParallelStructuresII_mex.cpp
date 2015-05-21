@@ -76,10 +76,7 @@ void NeuronSimulate::operator() (tbb::blocked_range<int> &Range) const{
 	auto &PreSynNeuronSectionBeg = IntVars.PreSynNeuronSectionBeg;
 	auto &PreSynNeuronSectionEnd = IntVars.PreSynNeuronSectionEnd;
 
-	auto &NAdditionalSpikesNow = IntVars.NAdditionalSpikesNow;
-
 	auto &LastSpikedTimeNeuron = IntVars.LSTNeuron;
-	auto &CurrentQueueIndex = IntVars.CurrentQIndex;
 	auto &StdDev = IntVars.StdDev;
 	auto &onemsbyTstep = IntVars.onemsbyTstep;
 	auto &time = IntVars.Time;
@@ -104,11 +101,7 @@ void NeuronSimulate::operator() (tbb::blocked_range<int> &Range) const{
 			//Implementing Network Computation in case a Neuron has spiked in the current interval
 			if (Vnow[j] >= 30.0f){
 				Vnow[j] = 30.0f;
-
 				LastSpikedTimeNeuron[j] = time;
-				if (PreSynNeuronSectionBeg[j] >= 0)
-					for (size_t k = PreSynNeuronSectionBeg[j]; k < PreSynNeuronSectionEnd[j]; ++k)
-						NAdditionalSpikesNow[(CurrentQueueIndex + Network[k].DelayinTsteps) % QueueSize].fetch_and_increment();
 				//Space to implement any causal Learning Rule
 			}
 		}
@@ -129,34 +122,6 @@ void CurrentAttenuate::operator() (tbb::blocked_range<int> &Range) const {
 	for (tbb::atomic<long long> *i = Begin1, *j = Begin2; i < End1; ++i, ++j){
 		(*i) = (long long)(float(i->load()) * attenFactor1);
 		(*j) = (long long)(float(j->load()) * attenFactor2);
-	}
-}
-void SpikeRecord::operator()(tbb::blocked_range<int> &Range) const{
-
-	auto &Network = IntVars.Network;
-	auto &Vnow = IntVars.V;
-	auto &PreSynNeuronSectionBeg = IntVars.PreSynNeuronSectionBeg;
-	auto &PreSynNeuronSectionEnd = IntVars.PreSynNeuronSectionEnd;
-
-	auto &CurrentSpikeLoadingInd = IntVars.CurrentSpikeLoadingInd;
-	auto &SpikeQueue = IntVars.SpikeQueue;
-	auto &CurrentQueueIndex = IntVars.CurrentQIndex;
-
-	int QueueSize = IntVars.onemsbyTstep*IntVars.DelayRange;
-	int RangeBeg = Range.begin();
-	int RangeEnd = Range.end();
-
-	for (int j = RangeBeg; j < RangeEnd; ++j){
-		if (Vnow[j] == 30.0){
-			size_t CurrNeuronSectionBeg = PreSynNeuronSectionBeg[j];
-			size_t CurrNeuronSectionEnd = PreSynNeuronSectionEnd[j];
-			if (CurrNeuronSectionBeg >= 0)
-				for (size_t k = CurrNeuronSectionBeg; k < CurrNeuronSectionEnd; ++k){
-					int ThisQueue = (CurrentQueueIndex + Network[k].DelayinTsteps) % QueueSize;
-					int ThisLoadingInd = CurrentSpikeLoadingInd[ThisQueue].fetch_and_increment();
-					SpikeQueue[ThisQueue][ThisLoadingInd] = k;
-				}
-		}
 	}
 }
 void InputArgs::IExtFunc(float time, MexVector<float> &Iext)
@@ -454,6 +419,64 @@ void InternalVars::DoSingleStateOutput(SingleStateStruct &FinalStateOut){
 	FinalStateOut.Time = Time;
 }
 
+void CachedSpikeStorage(InternalVars &IntVars){
+
+	auto &N = IntVars.N;
+	auto &Network = IntVars.Network;
+
+	auto &SpikeQueue = IntVars.SpikeQueue;
+	auto &LastSpikedTimeNeuron = IntVars.LSTNeuron;
+
+	auto &preSynNeuronSectionBeg = IntVars.PreSynNeuronSectionBeg;
+	auto &preSynNeuronSectionEnd = IntVars.PreSynNeuronSectionEnd;
+
+	auto &CurrentQIndex = IntVars.CurrentQIndex;
+	auto &time = IntVars.Time;
+
+	const int nBins = IntVars.onemsbyTstep * IntVars.DelayRange;
+	const int CacheBuffering = 32;	// Each time a cache of size 64 will be pulled in 
+	static MexVector<__m128i> BinningBuffer(CacheBuffering*nBins);	//each element is 16 bytes
+	static MexVector<int> BufferInsertIndex(nBins, 0);
+
+	for (int j = 0; j < N; ++j){
+		if (LastSpikedTimeNeuron[j] == time){
+			int k = preSynNeuronSectionBeg[j];
+			int kend = preSynNeuronSectionEnd[j];
+			if (k != kend){
+				int NoofCurrNeuronSpikes = kend - k;
+				MexVector<Synapse>::iterator iSyn = Network.begin() + k;
+				MexVector<Synapse>::iterator iSynEnd = Network.begin() + kend;
+
+				//TotalSpikesTemp += iSynEnd - iSyn;
+				for (; iSyn < iSynEnd; ++iSyn, ++k){
+					int CurrIndex = (CurrentQIndex + iSyn->DelayinTsteps) % nBins;
+					int BufferIndex = BufferInsertIndex[CurrIndex];
+					int *BufferIndexPtr = &BufferInsertIndex[CurrIndex];
+					if (BufferIndex == CacheBuffering){
+						SpikeQueue[CurrIndex].push_size(CacheBuffering);
+						//TotalSpikesTemp += CacheBuffering;
+						__m128i* kbeg = reinterpret_cast<__m128i*>(SpikeQueue[CurrIndex].end() - CacheBuffering);
+						__m128i* kend = reinterpret_cast<__m128i*>(SpikeQueue[CurrIndex].end());
+						__m128i* lbeg = reinterpret_cast<__m128i*>(BinningBuffer.begin() + CurrIndex * CacheBuffering);
+
+						for (__m128i* k = kbeg, *l = lbeg; k < kend; k++, l++){
+							_mm_stream_si128(k, _mm_load_si128(l));
+						}
+						BufferIndex = 0;
+						*BufferIndexPtr = 0;
+					}
+
+					reinterpret_cast<int *>(BinningBuffer.begin())[CurrIndex*CacheBuffering * 4 + BufferIndex]
+						= k;
+					++*BufferIndexPtr;
+				}
+			}
+		}
+	}
+
+
+}
+
 void SimulateParallel(
 	InputArgs &&InputArguments,
 	OutputVarsStruct &PureOutputs,
@@ -484,7 +507,7 @@ void SimulateParallel(
 	
 
 	int &NoOfms				= IntVars.NoOfms;
-	int &onemsbyTstep		= IntVars.onemsbyTstep;
+	const int &onemsbyTstep	= IntVars.onemsbyTstep;
 	int Tbeg				= IntVars.Time;				//Tbeg is just an initial constant, 
 	int &time				= IntVars.Time;				//time is the actual changing state variable
 	int &DelayRange			= IntVars.DelayRange;
@@ -529,8 +552,6 @@ void SimulateParallel(
 	
 	MexVector<size_t> &PostSynNeuronSectionEnd = IntVars.PostSynNeuronSectionEnd;
 	
-	atomicLongVect &NAdditionalSpikesNow = IntVars.NAdditionalSpikesNow;
-	atomicLongVect &CurrentSpikeLoadingInd = IntVars.CurrentSpikeLoadingInd;
 	
 	//----------------------------------------------------------------------------------------------//
 	//--------------------------------- Initializing output Arrays ---------------------------------//
@@ -629,16 +650,9 @@ void SimulateParallel(
 		// Calculation of V,U[t] from V,U[t-1], Iin = Itemp
 		tbb::parallel_for(tbb::blocked_range<int>(0, N, 100), NeuronSimulate(IntVars), apNeuronSim);
 
-		/////// This is code to extend vectors before they are written to.
-		for (int k = 0; k < QueueSize; ++k){
-			CurrentSpikeLoadingInd[k] = SpikeQueue[k].size();
-			SpikeQueue[k].push_size(NAdditionalSpikesNow[k].load());
-		}
 		// This is code for storing spikes
-		tbb::parallel_for(tbb::blocked_range<int>(0, N, 1000),
-			SpikeRecord(IntVars));
+		CachedSpikeStorage(IntVars);
 
-		for (int k = 0; k < QueueSize; ++k) NAdditionalSpikesNow[k] = 0;
 		CurrentQueueIndex = (CurrentQueueIndex + 1) % QueueSize;
 
 		IntVars.DoOutput(StateVarsOutput, PureOutputs);

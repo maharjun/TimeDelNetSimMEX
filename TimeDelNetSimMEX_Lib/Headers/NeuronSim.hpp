@@ -67,17 +67,6 @@ struct NeuronSimulate{
 	void operator() (tbb::blocked_range<int> &Range) const;
 };
 
-struct SpikeRecord{
-	InternalVars &IntVars;
-
-	SpikeRecord(
-		InternalVars &IntVars_
-		) :
-		IntVars(IntVars_){}
-
-	void operator()(tbb::blocked_range<int> &Range) const;
-};
-
 struct CurrentAttenuate{
 	InternalVars &IntVars;
 
@@ -177,18 +166,6 @@ struct InternalVars{
 	MexVector<size_t> PostSynNeuronSectionEnd;	        // PostSynNeuronSectionEnd[j] Maintains the list of the 
 														// indices one greater than index of the last synapse in 
 														// AuxArray with NEnd = j+1
-	// NAdditionalSpikesNow - A vector of atomic integers that stores the number 
-	//              of spikes generated corresponding to each of the sub-vectors 
-	//              above. Used to reallocate memory before parallelization of 
-	//              write op
-	// 
-	// CurrentSpikeLoadingInd - A vector of Atomic integers such that the j'th 
-	//              element represents the index into SpikeQueue[j] into which 
-	//              the spike is to be added by the current loop instance. 
-	//              used in parallelizing spike storage
-
-	atomicLongVect NAdditionalSpikesNow;
-	atomicLongVect CurrentSpikeLoadingInd;
 
 	InternalVars(InputArgs &IArgs) :
 		N(IArgs.Neurons.size()),
@@ -217,8 +194,6 @@ struct InternalVars{
 		PreSynNeuronSectionEnd(N, -1),
 		PostSynNeuronSectionBeg(N, -1),
 		PostSynNeuronSectionEnd(N, -1),
-		NAdditionalSpikesNow(onemsbyTstep * DelayRange),
-		CurrentSpikeLoadingInd(onemsbyTstep * DelayRange),
 		onemsbyTstep(IArgs.onemsbyTstep),
 		NoOfms(IArgs.NoOfms),
 		DelayRange(IArgs.DelayRange),
