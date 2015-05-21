@@ -39,129 +39,6 @@ struct OutOps{
 typedef vector<tbb::atomic<long long>, tbb::zero_allocator<long long> > atomicLongVect;
 typedef vector<tbb::atomic<int>, tbb::zero_allocator<int> > atomicIntVect;
 
-struct CurrentUpdate
-{
-	MexVector<int> & SpikeList;
-	MexVector<Synapse> &Network;
-	atomicLongVect &Iin1;
-	atomicLongVect &Iin2;
-	MexVector<int> &LastSpikedTimeSyn;
-	int time;
-	float I0;
-	CurrentUpdate(MexVector<int> &SpikeList_,
-		MexVector<Synapse> &Network_,
-		atomicLongVect &Iin1_,
-		atomicLongVect &Iin2_,
-		MexVector<int> &LastSpikedTimeSyn_, float I0_, int time_) :
-		SpikeList(SpikeList_),
-		Network(Network_),
-		Iin1(Iin1_),
-		Iin2(Iin2_),
-		LastSpikedTimeSyn(LastSpikedTimeSyn_),
-		I0(I0_),
-		time(time_){};
-	void operator () (const tbb::blocked_range<int*> &BlockedRange) const;
-};
-struct NeuronSimulate{
-	MexVector<float> &Vnow;
-	MexVector<float> &Unow;
-	atomicLongVect &Iin1;
-	atomicLongVect &Iin2;
-	MexVector<float> &Irand;
-	MexVector<float> &Iext;
-	MexVector<Neuron> &Neurons;
-	MexVector<Synapse> &Network;
-	int CurrentQueueIndex, QueueSize, onemsbyTstep, time;
-	float StdDev;
-	MexVector<size_t> &PreSynNeuronSectionBeg;
-	MexVector<size_t> &PreSynNeuronSectionEnd;
-	atomicIntVect &NAdditionalSpikesNow;
-	MexVector<int> &LastSpikedTimeNeuron;
-
-	NeuronSimulate(
-		MexVector<float> &Vnow_,
-		MexVector<float> &Unow_,
-		atomicLongVect &Iin1_,
-		atomicLongVect &Iin2_,
-		MexVector<float> &Irand_,
-		MexVector<float> &Iext_,
-		MexVector<Neuron> &Neurons_,
-		MexVector<Synapse> &Network_,
-		int CurrentQueueIndex_, int QueueSize_, int onemsbyTstep_,
-		int time_,
-		float StdDev_,
-		MexVector<size_t> &PreSynNeuronSectionBeg_,
-		MexVector<size_t> &PreSynNeuronSectionEnd_,
-		atomicIntVect &NAdditionalSpikesNow_,
-		MexVector<int> &LastSpikedTimeNeuron_
-		) :
-		Vnow(Vnow_),
-		Unow(Unow_),
-		Iin1(Iin1_),
-		Iin2(Iin2_),
-		Irand(Irand_),
-		Iext(Iext_),
-		Neurons(Neurons_),
-		Network(Network_),
-		CurrentQueueIndex(CurrentQueueIndex_), QueueSize(QueueSize_), onemsbyTstep(onemsbyTstep_),
-		time(time_),
-		StdDev(StdDev_),
-		PreSynNeuronSectionBeg(PreSynNeuronSectionBeg_),
-		PreSynNeuronSectionEnd(PreSynNeuronSectionEnd_),
-		NAdditionalSpikesNow(NAdditionalSpikesNow_),
-		LastSpikedTimeNeuron(LastSpikedTimeNeuron_)
-	{};
-	void operator() (tbb::blocked_range<int> &Range) const;
-};
-
-struct SpikeRecord{
-	MexVector<float> &Vnow;
-	MexVector<Synapse> &Network;
-	int CurrentQueueIndex, QueueSize;
-	MexVector<size_t> &PreSynNeuronSectionBeg;
-	MexVector<size_t> &PreSynNeuronSectionEnd;
-	atomicIntVect &CurrentSpikeLoadingInd;
-	MexVector<MexVector<int> > &SpikeQueue;
-
-	SpikeRecord(
-		MexVector<float> &Vnow_,
-		MexVector<Synapse> &Network_,
-		int CurrentQueueIndex_, int QueueSize_,
-		MexVector<size_t> &PreSynNeuronSectionBeg_,
-		MexVector<size_t> &PreSynNeuronSectionEnd_,
-		atomicIntVect &CurrentSpikeLoadingInd_,
-		MexVector<MexVector<int> > &SpikeQueue_
-		) :
-		Vnow(Vnow_),
-		Network(Network_),
-		CurrentQueueIndex(CurrentQueueIndex_), QueueSize(QueueSize_), 
-		PreSynNeuronSectionBeg(PreSynNeuronSectionBeg_),
-		PreSynNeuronSectionEnd(PreSynNeuronSectionEnd_),
-		CurrentSpikeLoadingInd(CurrentSpikeLoadingInd_),
-		SpikeQueue(SpikeQueue_){}
-
-	void operator()(tbb::blocked_range<int> &Range) const;
-};
-
-struct CurrentAttenuate{
-	atomicLongVect &Iin1;
-	atomicLongVect &Iin2;
-	float attenFactor1;
-	float attenFactor2;
-
-	CurrentAttenuate(
-		atomicLongVect &Iin1_,
-		atomicLongVect &Iin2_,
-		float attenFactor1_,
-		float attenFactor2_) :
-		Iin1(Iin1_),
-		Iin2(Iin2_),
-		attenFactor1(attenFactor1_),
-		attenFactor2(attenFactor2_){}
-
-	void operator() (tbb::blocked_range<int> &Range) const; 
-};
-
 // Incomplete declarations
 struct InputArgs;
 struct StateVarsOutStruct;
@@ -169,6 +46,47 @@ struct SingleStateStruct;
 struct FinalStateStruct;
 struct InitialStateStruct;
 struct OutputVarsStruct;
+struct InternalVars;
+
+struct CurrentUpdate
+{
+	InternalVars &IntVars;
+
+	CurrentUpdate(InternalVars &IntVars_) :
+		IntVars(IntVars_){};
+	void operator() (const tbb::blocked_range<int*> &BlockedRange) const;
+};
+struct NeuronSimulate{
+	InternalVars &IntVars;
+
+	NeuronSimulate(
+		InternalVars &IntVars_
+		) :
+		IntVars(IntVars_)
+	{};
+	void operator() (tbb::blocked_range<int> &Range) const;
+};
+
+struct SpikeRecord{
+	InternalVars &IntVars;
+
+	SpikeRecord(
+		InternalVars &IntVars_
+		) :
+		IntVars(IntVars_){}
+
+	void operator()(tbb::blocked_range<int> &Range) const;
+};
+
+struct CurrentAttenuate{
+	InternalVars &IntVars;
+
+	CurrentAttenuate(
+		InternalVars &IntVars_) :
+		IntVars(IntVars_){}
+
+	void operator() (tbb::blocked_range<int> &Range) const; 
+};
 
 
 struct InputArgs{
@@ -214,8 +132,8 @@ struct InputArgs{
 struct InternalVars{
 	int N;
 	int M;
-	int i;	//This is the most important loop index that is definitely a state variable
-			// and plays a crucial role in deciding the index into which the output must be performed
+	int i;		//This is the most important loop index that is definitely a state variable
+				// and plays a crucial role in deciding the index into which the output must be performed
 	int Time;	// must be initialized befor beta
 	int beta;	// This is another parameter that plays a rucial role when storing sparsely.
 				// It is the first value of i for which the sparse storage must be done.
@@ -246,6 +164,32 @@ struct InternalVars{
 	MexVector<int> &LSTNeuron;
 	MexVector<int> &LSTSyn;
 
+	MexVector<size_t> AuxArray;						    // Auxillary Array that is an indirection between Network
+													    // and an array sorted lexicographically by (NEnd, NStart)
+	MexVector<size_t> PreSynNeuronSectionBeg;	        // PreSynNeuronSectionBeg[j] Maintains the list of the 
+														// index of the first synapse in Network with NStart = j+1
+	MexVector<size_t> PreSynNeuronSectionEnd;	        // PostSynNeuronSectionEnd[j] Maintains the list of the 
+														// indices one greater than index of the last synapse in 
+														// Network with NStart = j+1
+
+	MexVector<size_t> PostSynNeuronSectionBeg;	        // PostSynNeuronSectionBeg[j] Maintains the list of the 
+														// index of the first synapse in AuxArray with NEnd = j+1
+	MexVector<size_t> PostSynNeuronSectionEnd;	        // PostSynNeuronSectionEnd[j] Maintains the list of the 
+														// indices one greater than index of the last synapse in 
+														// AuxArray with NEnd = j+1
+	// NAdditionalSpikesNow - A vector of atomic integers that stores the number 
+	//              of spikes generated corresponding to each of the sub-vectors 
+	//              above. Used to reallocate memory before parallelization of 
+	//              write op
+	// 
+	// CurrentSpikeLoadingInd - A vector of Atomic integers such that the j'th 
+	//              element represents the index into SpikeQueue[j] into which 
+	//              the spike is to be added by the current loop instance. 
+	//              used in parallelizing spike storage
+
+	atomicLongVect NAdditionalSpikesNow;
+	atomicLongVect CurrentSpikeLoadingInd;
+
 	InternalVars(InputArgs &IArgs) :
 		N(IArgs.Neurons.size()),
 		M(IArgs.Network.size()),
@@ -268,6 +212,13 @@ struct InternalVars{
 		SpikeQueue(IArgs.SpikeQueue),
 		LSTNeuron(IArgs.LSTNeuron),
 		LSTSyn(IArgs.LSTSyn),
+		AuxArray(M),
+		PreSynNeuronSectionBeg(N, -1),
+		PreSynNeuronSectionEnd(N, -1),
+		PostSynNeuronSectionBeg(N, -1),
+		PostSynNeuronSectionEnd(N, -1),
+		NAdditionalSpikesNow(onemsbyTstep * DelayRange),
+		CurrentSpikeLoadingInd(onemsbyTstep * DelayRange),
 		onemsbyTstep(IArgs.onemsbyTstep),
 		NoOfms(IArgs.NoOfms),
 		DelayRange(IArgs.DelayRange),

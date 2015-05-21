@@ -11,11 +11,14 @@
 #include "..\Headers\NeuronSim.hpp"
 #include "..\Headers\FiltRandomTBB.hpp"
 
+#include <emmintrin.h>
+#include <smmintrin.h>
+
 using namespace std;
 
 #define VECTOR_IMPLEMENTATION
 
-void CountingSort(int N, MexVector<Synapse> &Network, MexVector<int> &indirection)
+void CountingSort(int N, MexVector<Synapse> &Network, MexVector<size_t> &indirection)
 {
 	MexVector<int> CumulativeCountStart(N,0);
 	MexVector<int> IOutsertIndex(N);
@@ -39,6 +42,13 @@ void CountingSort(int N, MexVector<Synapse> &Network, MexVector<int> &indirectio
 }
 
 void CurrentUpdate::operator () (const tbb::blocked_range<int*> &BlockedRange) const{
+	const float &I0 = IntVars.I0;
+	auto &Network           = IntVars.Network;
+	auto &Iin1              = IntVars.Iin1;
+	auto &Iin2              = IntVars.Iin2;
+	auto &LastSpikedTimeSyn = IntVars.LSTSyn;
+	auto &time              = IntVars.Time;
+
 	int *begin = BlockedRange.begin();
 	int *end = BlockedRange.end();
 	for (int * iter = begin; iter < end; ++iter){
@@ -48,10 +58,33 @@ void CurrentUpdate::operator () (const tbb::blocked_range<int*> &BlockedRange) c
 		Iin2[Network[CurrentSynapse].NEnd - 1].fetch_and_add((long long)AddedCurrent);
 		LastSpikedTimeSyn[CurrentSynapse] = time;
 	}
-		
 }
 
 void NeuronSimulate::operator() (tbb::blocked_range<int> &Range) const{
+
+	auto &Vnow = IntVars.V;
+	auto &Unow = IntVars.U;
+
+	auto &Neurons = IntVars.Neurons;
+	auto &Network = IntVars.Network;
+
+	auto &Iin1 = IntVars.Iin1;
+	auto &Iin2 = IntVars.Iin2;
+	auto &Iext = IntVars.Iext;
+	auto &Irand = IntVars.Irand;
+
+	auto &PreSynNeuronSectionBeg = IntVars.PreSynNeuronSectionBeg;
+	auto &PreSynNeuronSectionEnd = IntVars.PreSynNeuronSectionEnd;
+
+	auto &NAdditionalSpikesNow = IntVars.NAdditionalSpikesNow;
+
+	auto &LastSpikedTimeNeuron = IntVars.LSTNeuron;
+	auto &CurrentQueueIndex = IntVars.CurrentQIndex;
+	auto &StdDev = IntVars.StdDev;
+	auto &onemsbyTstep = IntVars.onemsbyTstep;
+	auto &time = IntVars.Time;
+
+	int QueueSize = onemsbyTstep*IntVars.DelayRange;
 	int RangeBeg = Range.begin();
 	int RangeEnd = Range.end();
 	for (int j = RangeBeg; j < RangeEnd; ++j){
@@ -82,6 +115,12 @@ void NeuronSimulate::operator() (tbb::blocked_range<int> &Range) const{
 	}
 }
 void CurrentAttenuate::operator() (tbb::blocked_range<int> &Range) const {
+
+	auto &Iin1 = IntVars.Iin1;
+	auto &Iin2 = IntVars.Iin2;
+	auto &attenFactor1 = IntVars.CurrentDecayFactor1;
+	auto &attenFactor2 = IntVars.CurrentDecayFactor2;
+
 	tbb::atomic<long long> *Begin1 = &Iin1[Range.begin()];
 	tbb::atomic<long long> *End1 = &Iin1[Range.end()-1] + 1;
 	tbb::atomic<long long> *Begin2 = &Iin2[Range.begin()];
@@ -93,8 +132,20 @@ void CurrentAttenuate::operator() (tbb::blocked_range<int> &Range) const {
 	}
 }
 void SpikeRecord::operator()(tbb::blocked_range<int> &Range) const{
+
+	auto &Network = IntVars.Network;
+	auto &Vnow = IntVars.V;
+	auto &PreSynNeuronSectionBeg = IntVars.PreSynNeuronSectionBeg;
+	auto &PreSynNeuronSectionEnd = IntVars.PreSynNeuronSectionEnd;
+
+	auto &CurrentSpikeLoadingInd = IntVars.CurrentSpikeLoadingInd;
+	auto &SpikeQueue = IntVars.SpikeQueue;
+	auto &CurrentQueueIndex = IntVars.CurrentQIndex;
+
+	int QueueSize = IntVars.onemsbyTstep*IntVars.DelayRange;
 	int RangeBeg = Range.begin();
 	int RangeEnd = Range.end();
+
 	for (int j = RangeBeg; j < RangeEnd; ++j){
 		if (Vnow[j] == 30.0){
 			size_t CurrNeuronSectionBeg = PreSynNeuronSectionBeg[j];
@@ -468,31 +519,18 @@ void SimulateParallel(
 	// they are typically of the form of some processed version of an input vector
 	// thus they dont change with time and are prima facie not used to generate output
 
-	MexVector<int> AuxArray(M);						    // Auxillary Array that is an indirection between Network
-													    // and an array sorted lexicographically by (NEnd, NStart)
-	MexVector<size_t> PreSynNeuronSectionBeg(N, -1);	// PreSynNeuronSectionBeg[j] Maintains the list of the 
-														// index of the first synapse in Network with NStart = j+1
-	MexVector<size_t> PreSynNeuronSectionEnd(N, -1);	// PostSynNeuronSectionEnd[j] Maintains the list of the 
-														// indices one greater than index of the last synapse in 
-														// Network with NStart = j+1
+	MexVector<size_t> &AuxArray                = IntVars.AuxArray;
 
-	MexVector<size_t> PostSynNeuronSectionBeg(N, -1);	// PostSynNeuronSectionBeg[j] Maintains the list of the 
-														// index of the first synapse in AuxArray with NEnd = j+1
-	MexVector<size_t> PostSynNeuronSectionEnd(N, -1);	// PostSynNeuronSectionEnd[j] Maintains the list of the 
-														// indices one greater than index of the last synapse in 
-														// AuxArray with NEnd = j+1
-	// NAdditionalSpikesNow - A vector of atomic integers that stores the number 
-	//              of spikes generated corresponding to each of the sub-vectors 
-	//              above. Used to reallocate memory before parallelization of 
-	//              write op
-	// 
-	// CurrentSpikeLoadingInd - A vector of Atomic integers such that the j'th 
-	//              element represents the index into SpikeQueue[j] into which 
-	//              the spike is to be added by the current loop instance. 
-	//              used in parallelizing spike storage
+	MexVector<size_t> &PreSynNeuronSectionBeg  = IntVars.PreSynNeuronSectionBeg;	
+	
+	MexVector<size_t> &PreSynNeuronSectionEnd  = IntVars.PreSynNeuronSectionEnd;
 
-	atomicIntVect NAdditionalSpikesNow(onemsbyTstep * DelayRange);
-	atomicIntVect CurrentSpikeLoadingInd(onemsbyTstep * DelayRange);
+	MexVector<size_t> &PostSynNeuronSectionBeg = IntVars.PostSynNeuronSectionBeg;
+	
+	MexVector<size_t> &PostSynNeuronSectionEnd = IntVars.PostSynNeuronSectionEnd;
+	
+	atomicLongVect &NAdditionalSpikesNow = IntVars.NAdditionalSpikesNow;
+	atomicLongVect &CurrentSpikeLoadingInd = IntVars.CurrentSpikeLoadingInd;
 	
 	//----------------------------------------------------------------------------------------------//
 	//--------------------------------- Initializing output Arrays ---------------------------------//
@@ -564,7 +602,7 @@ void SimulateParallel(
 		// This iteration applies time update equation for internal current
 		// in this case, it is just an exponential attenuation
 		tbb::parallel_for(tbb::blocked_range<int>(0, N, 3000),
-			CurrentAttenuate(Iin1, Iin2, CurrentDecayFactor1, CurrentDecayFactor2));
+			CurrentAttenuate(IntVars));
 
 		size_t QueueSubEnd = SpikeQueue[CurrentQueueIndex].size();
 		maxSpikeno += QueueSubEnd;
@@ -585,14 +623,11 @@ void SimulateParallel(
 		if (SpikeQueue[CurrentQueueIndex].size() != 0)
 			tbb::parallel_for(tbb::blocked_range<int*>((int*)&SpikeQueue[CurrentQueueIndex][0],
 				(int*)&SpikeQueue[CurrentQueueIndex][QueueSubEnd - 1] + 1, 10000), 
-				CurrentUpdate(SpikeQueue[CurrentQueueIndex], Network, Iin1, Iin2, LastSpikedTimeSyn, I0, time), apCurrentUpdate);
+				CurrentUpdate(IntVars), apCurrentUpdate);
 		SpikeQueue[CurrentQueueIndex].clear();
 
 		// Calculation of V,U[t] from V,U[t-1], Iin = Itemp
-		tbb::parallel_for(tbb::blocked_range<int>(0, N, 100), NeuronSimulate(
-			Vnow, Unow, Iin1, Iin2, Irand, Iext, Neurons, Network,
-			CurrentQueueIndex, QueueSize, onemsbyTstep, time, StdDev, PreSynNeuronSectionBeg,
-			PreSynNeuronSectionEnd, NAdditionalSpikesNow, LastSpikedTimeNeuron), apNeuronSim);
+		tbb::parallel_for(tbb::blocked_range<int>(0, N, 100), NeuronSimulate(IntVars), apNeuronSim);
 
 		/////// This is code to extend vectors before they are written to.
 		for (int k = 0; k < QueueSize; ++k){
@@ -601,15 +636,7 @@ void SimulateParallel(
 		}
 		// This is code for storing spikes
 		tbb::parallel_for(tbb::blocked_range<int>(0, N, 1000),
-			SpikeRecord(
-				Vnow,
-				Network,
-				CurrentQueueIndex, QueueSize,
-				PreSynNeuronSectionBeg,
-				PreSynNeuronSectionEnd,
-				CurrentSpikeLoadingInd,
-				SpikeQueue
-			));
+			SpikeRecord(IntVars));
 
 		for (int k = 0; k < QueueSize; ++k) NAdditionalSpikesNow[k] = 0;
 		CurrentQueueIndex = (CurrentQueueIndex + 1) % QueueSize;

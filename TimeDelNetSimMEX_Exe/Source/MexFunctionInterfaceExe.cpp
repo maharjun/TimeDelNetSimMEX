@@ -68,7 +68,6 @@ int main(){
 	FinalState = lhs[2];
 	InitState = lhs[3];
 	
-
 	OutputFilePtr = matOpen(OutputFilePath, "wz");
 	matPutVariable(OutputFilePtr, "InitState", InitState);
 	matPutVariable(OutputFilePtr, "OutputVars", OutputVars);
