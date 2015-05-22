@@ -52,11 +52,16 @@ void CurrentUpdate::operator () (const tbb::blocked_range<int*> &BlockedRange) c
 	int *begin = BlockedRange.begin();
 	int *end = BlockedRange.end();
 	for (int * iter = begin; iter < end; ++iter){
-		int CurrentSynapse = *iter;
-		float AddedCurrent = (I0*Network[CurrentSynapse].Weight)*(1 << 17);
-		Iin1[Network[CurrentSynapse].NEnd - 1].fetch_and_add((long long)AddedCurrent);
-		Iin2[Network[CurrentSynapse].NEnd - 1].fetch_and_add((long long)AddedCurrent);
-		LastSpikedTimeSyn[CurrentSynapse] = time;
+		Synapse CurrentSynapse = Network[*iter];
+		int CurrentSynapseInd = *iter;
+		__m128 AddedCurrent;
+		AddedCurrent.m128_u64[0] = 0; AddedCurrent.m128_u64[1] = 0;
+		AddedCurrent.m128_f32[0] = CurrentSynapse.Weight;
+		AddedCurrent.m128_u32[0] += (17 << 23);
+
+		Iin1[CurrentSynapse.NEnd - 1].fetch_and_add((long long)AddedCurrent.m128_f32[0]);
+		Iin2[CurrentSynapse.NEnd - 1].fetch_and_add((long long)AddedCurrent.m128_f32[0]);
+		LastSpikedTimeSyn[CurrentSynapseInd] = time;
 	}
 }
 
@@ -614,9 +619,22 @@ void SimulateParallel(
 	// ------------------------------------------------------------------------------ //
 	// ------------------------------ Simulation Loop ------------------------------- //
 	// ------------------------------------------------------------------------------ //
+	// Profiling Times.
+	size_t IUpdateTime = 0,
+		   SpikeStoreTime = 0,
+		   NeuronCalcTime = 0,
+		   OutputTime = 0;
+	std::chrono::system_clock::time_point
+		IUpdateTimeBeg, IUpdateTimeEnd,
+		SpikeStoreTimeBeg, SpikeStoreTimeEnd,
+		NeuronCalcTimeBeg, NeuronCalcTimeEnd,
+		OutputTimeBeg, OutputTimeEnd;
+
 	for (i = 1; i<=nSteps; ++i){
 		
 		time = time + 1;
+
+		IUpdateTimeBeg = std::chrono::system_clock::now();
 		InputArgs::IExtFunc(time*0.001f / onemsbyTstep, Iext);
 		Irand.generate();
 
@@ -646,16 +664,27 @@ void SimulateParallel(
 				(int*)&SpikeQueue[CurrentQueueIndex][QueueSubEnd - 1] + 1, 10000), 
 				CurrentUpdate(IntVars), apCurrentUpdate);
 		SpikeQueue[CurrentQueueIndex].clear();
+		IUpdateTimeEnd = std::chrono::system_clock::now();
+		IUpdateTime += std::chrono::duration_cast<std::chrono::microseconds>(IUpdateTimeEnd - IUpdateTimeBeg).count();
 
 		// Calculation of V,U[t] from V,U[t-1], Iin = Itemp
+		NeuronCalcTimeBeg = std::chrono::system_clock::now();
 		tbb::parallel_for(tbb::blocked_range<int>(0, N, 100), NeuronSimulate(IntVars), apNeuronSim);
+		NeuronCalcTimeEnd = std::chrono::system_clock::now();
+		NeuronCalcTime += std::chrono::duration_cast<std::chrono::microseconds>(NeuronCalcTimeEnd - NeuronCalcTimeBeg).count();
 
 		// This is code for storing spikes
+		SpikeStoreTimeBeg = std::chrono::system_clock::now();
 		CachedSpikeStorage(IntVars);
+		SpikeStoreTimeEnd = std::chrono::system_clock::now();
+		SpikeStoreTime += std::chrono::duration_cast<std::chrono::microseconds>(SpikeStoreTimeEnd - SpikeStoreTimeBeg).count();
 
 		CurrentQueueIndex = (CurrentQueueIndex + 1) % QueueSize;
 
+		OutputTimeBeg = std::chrono::system_clock::now();
 		IntVars.DoOutput(StateVarsOutput, PureOutputs);
+		OutputTimeEnd = std::chrono::system_clock::now();
+		OutputTime += std::chrono::duration_cast<std::chrono::microseconds>(OutputTimeEnd - OutputTimeBeg).count();
 
 		// Status Display Section
 		if (!(i % StatusDisplayInterval)){
@@ -671,5 +700,10 @@ void SimulateParallel(
 	if ((OutputControl & OutOps::FINAL_STATE_REQ)){
 		IntVars.DoSingleStateOutput(FinalStateOutput);
 	}
+
+	cout << "Current Update Time = " << IUpdateTime / 1000 << "millisecs" << endl;
+	cout << "Spike Storage Time = " << SpikeStoreTime / 1000 << "millisecs" << endl;
+	cout << "Nuron Calculation Time = " << NeuronCalcTime / 1000 << "millisecs" << endl;
+	cout << "Output Time Time = " << OutputTime / 1000 << "millisecs" << endl;
 }
 
