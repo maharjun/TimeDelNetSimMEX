@@ -148,6 +148,7 @@ struct InternalVars{
 	atomicLongVect Iin1;
 	atomicLongVect Iin2;
 	BandLimGaussVect Irand;
+	MexMatrix<float> RandMat;
 	MexVector<float> Iext;
 	MexVector<MexVector<int> > &SpikeQueue;
 	MexVector<int> &LSTNeuron;
@@ -185,6 +186,7 @@ struct InternalVars{
 		Iin1(N),	// Iin is defined separately as an atomic vect.
 		Iin2(N),
 		Irand(),	// Irand defined separately.
+		RandMat(8192, N),
 		Iext(N, 0.0f),
 		SpikeQueue(IArgs.SpikeQueue),
 		LSTNeuron(IArgs.LSTNeuron),
@@ -276,6 +278,11 @@ struct InternalVars{
 			return;
 		}
 		
+		int LoopLimit = (8192 < onemsbyTstep*NoOfms) ? 8192 : onemsbyTstep*NoOfms - i;
+		for (int j = 0; j < LoopLimit; ++j){
+			Irand.generate();
+			RandMat[j] = Irand;
+		}
 		// Setting Initial Conditions of SpikeQueue
 		if (SpikeQueue.istrulyempty()){
 			SpikeQueue = MexVector<MexVector<int> >(onemsbyTstep * DelayRange, MexVector<int>());

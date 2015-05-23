@@ -164,7 +164,7 @@ public:
 		MexVector<resTyp>::resize(NewSize, resTyp(0));
 	}
 
-	inline pair<resTyp, resTyp> gaussRandVal(XorShiftPlus &Gen){
+	__inline pair<resTyp, resTyp> gaussRandVal(XorShiftPlus &Gen){
 		pair<resTyp, resTyp> retVal;
 		resTyp &U = retVal.first;
 		resTyp &V = retVal.second;

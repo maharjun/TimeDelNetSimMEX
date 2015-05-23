@@ -76,7 +76,7 @@ void NeuronSimulate::operator() (tbb::blocked_range<int> &Range) const{
 	auto &Iin1 = IntVars.Iin1;
 	auto &Iin2 = IntVars.Iin2;
 	auto &Iext = IntVars.Iext;
-	auto &Irand = IntVars.Irand;
+	auto &RandMat = IntVars.RandMat;
 
 	auto &PreSynNeuronSectionBeg = IntVars.PreSynNeuronSectionBeg;
 	auto &PreSynNeuronSectionEnd = IntVars.PreSynNeuronSectionEnd;
@@ -85,6 +85,7 @@ void NeuronSimulate::operator() (tbb::blocked_range<int> &Range) const{
 	auto &StdDev = IntVars.StdDev;
 	auto &onemsbyTstep = IntVars.onemsbyTstep;
 	auto &time = IntVars.Time;
+	auto i = IntVars.i % 8192;
 
 	int QueueSize = onemsbyTstep*IntVars.DelayRange;
 	int RangeBeg = Range.begin();
@@ -98,7 +99,7 @@ void NeuronSimulate::operator() (tbb::blocked_range<int> &Range) const{
 		else{
 			//Implementing Izhikevich differential equation
 			float Vnew, Unew;
-			Vnew = Vnow[j] + (Vnow[j] * (0.04f*Vnow[j] + 5.0f) + 140.0f - Unow[j] + (float)(Iin2[j] - Iin1[j]) / (1 << 17) + Iext[j] + StdDev*Irand[j]) / onemsbyTstep;
+			Vnew = Vnow[j] + (Vnow[j] * (0.04f*Vnow[j] + 5.0f) + 140.0f - Unow[j] + (float)(Iin2[j] - Iin1[j]) / (1 << 17) + Iext[j] + StdDev*RandMat(i,j)) / onemsbyTstep;
 			Unew = Unow[j] + (Neurons[j].a*(Neurons[j].b*Vnow[j] - Unow[j])) / onemsbyTstep;
 			Vnow[j] = (Vnew > -100)? Vnew: -100;
 			Unow[j] = Unew;
@@ -139,11 +140,11 @@ void InputArgs::IExtFunc(float time, MexVector<float> &Iext)
 	}
 	else if (time - 0.8 <= 0.015){	//((int)(time / 0.1))*
 		for (int i = 0; i < 100*N/2000; ++i)
-			Iext[i] = 3;
+			Iext[i] = 9;
 	}
 	else{
 		for (int i = 0; i < 100*N/2000; ++i)
-			Iext[i] = 3;
+			Iext[i] = 9;
 	}
 }
 
@@ -278,6 +279,7 @@ void InitialStateStruct::initialize(const InternalVars &IntVars){
 void InternalVars::DoSparseOutput(StateVarsOutStruct &StateOut, OutputVarsStruct &OutVars){
 
 	int CurrentInsertPos = (i - beta) / (onemsbyTstep * StorageStepSize);
+	int iint = i % 8192;
 	int QueueSize = onemsbyTstep * DelayRange;
 	// Storing U,V,Iin and Time
 	if (OutputControl & OutOps::V_REQ)
@@ -292,7 +294,7 @@ void InternalVars::DoSparseOutput(StateVarsOutStruct &StateOut, OutputVarsStruct
 			StateOut.Iin2Out(CurrentInsertPos, j) = (float)Iin2[j] / (1 << 17);
 	// Storing Random Current related state vars
 	if (OutputControl & OutOps::I_RAND_REQ)
-		StateOut.IrandOut[CurrentInsertPos] = Irand;
+		StateOut.IrandOut[CurrentInsertPos] = RandMat[iint];
 	if (OutputControl & OutOps::GEN_STATE_REQ){
 		BandLimGaussVect::StateStruct TempStateStruct;
 		Irand.readstate(TempStateStruct);
@@ -333,12 +335,13 @@ void InternalVars::DoSparseOutput(StateVarsOutStruct &StateOut, OutputVarsStruct
 	// Storing Itot
 	if (OutputControl & OutOps::I_TOT_REQ){
 		for (int j = 0; j < N; ++j)
-			OutVars.Itot(CurrentInsertPos, j) = Iext[j] + StdDev*Irand[j] + (float)(Iin2[j] - Iin1[j]) / (1 << 17);
+			OutVars.Itot(CurrentInsertPos, j) = Iext[j] + StdDev*RandMat(iint,j) + (float)(Iin2[j] - Iin1[j]) / (1 << 17);
 	}
 }
 void InternalVars::DoFullOutput(StateVarsOutStruct &StateOut, OutputVarsStruct &OutVars){
 	if (!StorageStepSize){
 		int CurrentInsertPos = i - 1;
+		int iint = i % 8192;
 		int QueueSize = onemsbyTstep * DelayRange;
 		// Storing U,V,Iout and Time
 		if (OutputControl & OutOps::V_REQ)
@@ -353,7 +356,7 @@ void InternalVars::DoFullOutput(StateVarsOutStruct &StateOut, OutputVarsStruct &
 				StateOut.Iin2Out(CurrentInsertPos, j) = (float)Iin2[j] / (1 << 17);
 		// Storing Random Curent Related State vars
 		if (OutputControl & OutOps::I_RAND_REQ)
-			StateOut.IrandOut[CurrentInsertPos] = Irand;
+			StateOut.IrandOut[CurrentInsertPos] = RandMat[iint];
 		if (OutputControl & OutOps::GEN_STATE_REQ){
 			BandLimGaussVect::StateStruct TempStateStruct;
 			Irand.readstate(TempStateStruct);
@@ -394,7 +397,7 @@ void InternalVars::DoFullOutput(StateVarsOutStruct &StateOut, OutputVarsStruct &
 		// Storing Itot
 		if (OutputControl & OutOps::I_TOT_REQ){
 			for (int j = 0; j < N; ++j)
-				OutVars.Itot(CurrentInsertPos, j) = Iext[j] + StdDev*Irand[j] + (float)(Iin2[j] - Iin1[j]) / (1 << 17);
+				OutVars.Itot(CurrentInsertPos, j) = Iext[j] + StdDev*RandMat(iint, j) + (float)(Iin2[j] - Iin1[j]) / (1 << 17);
 		}
 	}
 }
@@ -505,6 +508,7 @@ void SimulateParallel(
 	atomicLongVect				&Iin1					= IntVars.Iin1;
 	atomicLongVect				&Iin2					= IntVars.Iin2;
 	BandLimGaussVect			&Irand					= IntVars.Irand;
+	MexMatrix<float>			&RandMat				= IntVars.RandMat;
 	MexVector<float>			&Iext					= IntVars.Iext;
 	MexVector<MexVector<int> >	&SpikeQueue				= IntVars.SpikeQueue;
 	MexVector<int>				&LastSpikedTimeNeuron	= IntVars.LSTNeuron;
@@ -620,11 +624,15 @@ void SimulateParallel(
 	// ------------------------------ Simulation Loop ------------------------------- //
 	// ------------------------------------------------------------------------------ //
 	// Profiling Times.
-	size_t IUpdateTime = 0,
+	size_t IExtGenTime = 0,
+		   IRandGenTime = 0,
+		   IUpdateTime = 0,
 		   SpikeStoreTime = 0,
 		   NeuronCalcTime = 0,
 		   OutputTime = 0;
 	std::chrono::system_clock::time_point
+		IExtGenTimeBeg, IExtGenTimeEnd,
+		IRandGenTimeBeg, IRandGenTimeEnd,
 		IUpdateTimeBeg, IUpdateTimeEnd,
 		SpikeStoreTimeBeg, SpikeStoreTimeEnd,
 		NeuronCalcTimeBeg, NeuronCalcTimeEnd,
@@ -634,9 +642,12 @@ void SimulateParallel(
 		
 		time = time + 1;
 
-		IUpdateTimeBeg = std::chrono::system_clock::now();
+		IExtGenTimeBeg = std::chrono::system_clock::now();
 		InputArgs::IExtFunc(time*0.001f / onemsbyTstep, Iext);
-		Irand.generate();
+		IExtGenTimeEnd = std::chrono::system_clock::now();
+		IExtGenTime += std::chrono::duration_cast<std::chrono::microseconds>(IExtGenTimeEnd - IExtGenTimeBeg).count();
+		
+		
 
 		// This iteration applies time update equation for internal current
 		// in this case, it is just an exponential attenuation
@@ -657,7 +668,7 @@ void SimulateParallel(
 				return;
 			}
 		}
-
+		IUpdateTimeBeg = std::chrono::system_clock::now();
 		// This iter calculates Itemp as in above diagram
 		if (SpikeQueue[CurrentQueueIndex].size() != 0)
 			tbb::parallel_for(tbb::blocked_range<int*>((int*)&SpikeQueue[CurrentQueueIndex][0],
@@ -672,6 +683,18 @@ void SimulateParallel(
 		tbb::parallel_for(tbb::blocked_range<int>(0, N, 100), NeuronSimulate(IntVars), apNeuronSim);
 		NeuronCalcTimeEnd = std::chrono::system_clock::now();
 		NeuronCalcTime += std::chrono::duration_cast<std::chrono::microseconds>(NeuronCalcTimeEnd - NeuronCalcTimeBeg).count();
+
+		// Generating RandMat
+		int LoopLimit = (8192 + i < nSteps) ? 8192 : nSteps - i;
+		IRandGenTimeBeg = std::chrono::system_clock::now();
+		if (i % 8192 == 0){
+			for (int j = 0; j < LoopLimit; ++j){
+				Irand.generate();
+				RandMat[j] = Irand;
+			}
+		}
+		IRandGenTimeEnd = std::chrono::system_clock::now();
+		IRandGenTime += std::chrono::duration_cast<std::chrono::microseconds>(IRandGenTimeEnd - IRandGenTimeBeg).count();
 
 		// This is code for storing spikes
 		SpikeStoreTimeBeg = std::chrono::system_clock::now();
@@ -701,9 +724,11 @@ void SimulateParallel(
 		IntVars.DoSingleStateOutput(FinalStateOutput);
 	}
 
+	cout << "CurrentExt Generation Time = " << IExtGenTime / 1000 << "millisecs" << endl;
+	cout << "CurrentRand Generation Time = " << IRandGenTime / 1000 << "millisecs" << endl;
 	cout << "Current Update Time = " << IUpdateTime / 1000 << "millisecs" << endl;
 	cout << "Spike Storage Time = " << SpikeStoreTime / 1000 << "millisecs" << endl;
 	cout << "Nuron Calculation Time = " << NeuronCalcTime / 1000 << "millisecs" << endl;
-	cout << "Output Time Time = " << OutputTime / 1000 << "millisecs" << endl;
+	cout << "Output Time = " << OutputTime / 1000 << "millisecs" << endl;
 }
 
