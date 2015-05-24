@@ -131,6 +131,7 @@ struct InternalVars{
 	int NoOfms;
 	int DelayRange;
 	int CurrentQIndex;
+	tbb::atomic<int> NSpikesGenminProc;
 	const float I0;
 	const float CurrentDecayFactor1, CurrentDecayFactor2;
 	const float alpha;
@@ -207,7 +208,9 @@ struct InternalVars{
 		alpha(0.5),
 		StdDev(3.5)
 		{
-
+		
+		// Setting NSpikesGenminProc
+		NSpikesGenminProc = 0;
 		// Setting value of beta
 		if (StorageStepSize)
 			beta = (onemsbyTstep * StorageStepSize) - Time % (onemsbyTstep * StorageStepSize);

@@ -85,6 +85,7 @@ void NeuronSimulate::operator() (tbb::blocked_range<int> &Range) const{
 	auto &StdDev = IntVars.StdDev;
 	auto &onemsbyTstep = IntVars.onemsbyTstep;
 	auto &time = IntVars.Time;
+	auto &NSpikesGenminProc = IntVars.NSpikesGenminProc;
 	auto k = (IntVars.i - 1) % 8192;
 
 	int QueueSize = onemsbyTstep*IntVars.DelayRange;
@@ -107,6 +108,7 @@ void NeuronSimulate::operator() (tbb::blocked_range<int> &Range) const{
 			//Implementing Network Computation in case a Neuron has spiked in the current interval
 			if (Vnow[j] >= 30.0f){
 				Vnow[j] = 30.0f;
+				//NSpikesGenminProc += ((PreSynNeuronSectionBeg[j] >= 0) ? PreSynNeuronSectionEnd[j] - PreSynNeuronSectionBeg[j] : 0);
 				LastSpikedTimeNeuron[j] = time;
 				//Space to implement any causal Learning Rule
 			}
@@ -434,6 +436,7 @@ void CachedSpikeStorage(InternalVars &IntVars){
 
 	auto &CurrentQIndex = IntVars.CurrentQIndex;
 	auto &time = IntVars.Time;
+	auto &NSpikesGenminProc = IntVars.NSpikesGenminProc;
 
 	const int nBins = IntVars.onemsbyTstep * IntVars.DelayRange;
 	const int CacheBuffering = 128;	// Each time a cache of size 64 will be pulled in 
@@ -441,6 +444,7 @@ void CachedSpikeStorage(InternalVars &IntVars){
 	static MexVector<int> BufferInsertIndex(nBins, 0);
 	static MexVector<int> AddressOffset(nBins, 0);
 
+	
 	for (int j = 0; j < nBins; ++j){
 		AddressOffset[j] = (reinterpret_cast<size_t>(SpikeQueue[j].end()) & 0x0F) >> 2;
 	}
@@ -451,6 +455,7 @@ void CachedSpikeStorage(InternalVars &IntVars){
 
 			if (k != kend){
 				int NoofCurrNeuronSpikes = kend - k;
+				NSpikesGenminProc += NoofCurrNeuronSpikes;
 				MexVector<Synapse>::iterator iSyn = Network.begin() + k;
 				MexVector<Synapse>::iterator iSynEnd = Network.begin() + kend;
 
@@ -464,6 +469,7 @@ void CachedSpikeStorage(InternalVars &IntVars){
 
 					if (BufferIndex == CacheBuffering){
 						if (CurrAddressOffset){
+							NSpikesGenminProc -= 4 - CurrAddressOffset;
 							for (int k = 0; k < 4-CurrAddressOffset; ++k){
 								SpikeQueue[CurrIndex].push_back(*(reinterpret_cast<int*>(BinningBuffer.begin() + (CurrIndex + 1)*CacheBuffering / 4)
 									                                      - (4-CurrAddressOffset) + k));
@@ -471,12 +477,13 @@ void CachedSpikeStorage(InternalVars &IntVars){
 								// BinningBuffer.begin() + (CurrIndex + 1)*CacheBuffering / 4 [__m128*]
 								// therefore we move 4-CurrAddressOffset (which is the no. of elems to be inserted)
 								// behind and push back.
-								BufferIndex -= 4 - CurrAddressOffset;
-								*BufferIndexPtr -= 4 - CurrAddressOffset;
-								*CurrAddressOffsetPtr = 0;
 							}
+							BufferIndex -= 4 - CurrAddressOffset;
+							*BufferIndexPtr -= 4 - CurrAddressOffset;
+							*CurrAddressOffsetPtr = 0;
 						}
 						else{
+							NSpikesGenminProc -= CacheBuffering;
 							SpikeQueue[CurrIndex].push_size(CacheBuffering);
 							//TotalSpikesTemp += CacheBuffering;
 							__m128i* kbeg = reinterpret_cast<__m128i*>(SpikeQueue[CurrIndex].end() - CacheBuffering);
@@ -502,6 +509,7 @@ void CachedSpikeStorage(InternalVars &IntVars){
 
 	for (int i = 0; i < nBins; ++i){
 		size_t CurrNElems = BufferInsertIndex[i];
+		NSpikesGenminProc -= CurrNElems;
 		SpikeQueue[i].push_size(CurrNElems);
 		int* kbeg = SpikeQueue[i].end() - CurrNElems;
 		int* kend = SpikeQueue[i].end();
@@ -755,6 +763,7 @@ void SimulateParallel(
 		IntVars.DoSingleStateOutput(FinalStateOutput);
 	}
 
+	cout << "Difference in No of spikes generated and processed = " << IntVars.NSpikesGenminProc << endl;
 	cout << "CurrentExt Generation Time = " << IExtGenTime / 1000 << "millisecs" << endl;
 	cout << "CurrentRand Generation Time = " << IRandGenTime / 1000 << "millisecs" << endl;
 	cout << "Current Update Time = " << IUpdateTime / 1000 << "millisecs" << endl;
