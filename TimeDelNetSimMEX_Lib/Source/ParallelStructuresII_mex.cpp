@@ -85,7 +85,7 @@ void NeuronSimulate::operator() (tbb::blocked_range<int> &Range) const{
 	auto &StdDev = IntVars.StdDev;
 	auto &onemsbyTstep = IntVars.onemsbyTstep;
 	auto &time = IntVars.Time;
-	auto i = IntVars.i % 8192;
+	auto k = (IntVars.i - 1) % 8192;
 
 	int QueueSize = onemsbyTstep*IntVars.DelayRange;
 	int RangeBeg = Range.begin();
@@ -99,7 +99,7 @@ void NeuronSimulate::operator() (tbb::blocked_range<int> &Range) const{
 		else{
 			//Implementing Izhikevich differential equation
 			float Vnew, Unew;
-			Vnew = Vnow[j] + (Vnow[j] * (0.04f*Vnow[j] + 5.0f) + 140.0f - Unow[j] + (float)(Iin2[j] - Iin1[j]) / (1 << 17) + Iext[j] + StdDev*RandMat(i,j)) / onemsbyTstep;
+			Vnew = Vnow[j] + (Vnow[j] * (0.04f*Vnow[j] + 5.0f) + 140.0f - Unow[j] + (float)(Iin2[j] - Iin1[j]) / (1 << 17) + Iext[j] + StdDev*RandMat(k,j)) / onemsbyTstep;
 			Unew = Unow[j] + (Neurons[j].a*(Neurons[j].b*Vnow[j] - Unow[j])) / onemsbyTstep;
 			Vnow[j] = (Vnew > -100)? Vnew: -100;
 			Unow[j] = Unew;
@@ -296,9 +296,7 @@ void InternalVars::DoSparseOutput(StateVarsOutStruct &StateOut, OutputVarsStruct
 	if (OutputControl & OutOps::I_RAND_REQ)
 		StateOut.IrandOut[CurrentInsertPos] = RandMat[iint];
 	if (OutputControl & OutOps::GEN_STATE_REQ){
-		BandLimGaussVect::StateStruct TempStateStruct;
-		Irand.readstate(TempStateStruct);
-		TempStateStruct.Generator1.getstate().ConvertStatetoVect(StateOut.GenStateOut[CurrentInsertPos]);
+		StateOut.GenStateOut[CurrentInsertPos] = GenMat[iint];
 	}
 	StateOut.TimeOut[CurrentInsertPos] = Time;
 
@@ -358,9 +356,7 @@ void InternalVars::DoFullOutput(StateVarsOutStruct &StateOut, OutputVarsStruct &
 		if (OutputControl & OutOps::I_RAND_REQ)
 			StateOut.IrandOut[CurrentInsertPos] = RandMat[iint];
 		if (OutputControl & OutOps::GEN_STATE_REQ){
-			BandLimGaussVect::StateStruct TempStateStruct;
-			Irand.readstate(TempStateStruct);
-			TempStateStruct.Generator1.getstate().ConvertStatetoVect(StateOut.GenStateOut[CurrentInsertPos]);
+			StateOut.GenStateOut[CurrentInsertPos] = GenMat[iint];
 		}
 		StateOut.TimeOut[CurrentInsertPos] = Time;
 
@@ -408,10 +404,8 @@ void InternalVars::DoSingleStateOutput(SingleStateStruct &FinalStateOut){
 		FinalStateOut.Iin2[j] = (float)Iin2[j] / (1 << 17);
 	}
 	// storing Random curret related state vars
-	FinalStateOut.Irand = Irand;
-	BandLimGaussVect::StateStruct TempStateStruct;
-	Irand.readstate(TempStateStruct);
-	TempStateStruct.Generator1.getstate().ConvertStatetoVect(FinalStateOut.GenState);
+	FinalStateOut.Irand = RandMat[i % 8192];
+	FinalStateOut.GenState = GenMat[i % 8192];
 
 	FinalStateOut.V = V;
 	FinalStateOut.U = U;
@@ -442,14 +436,19 @@ void CachedSpikeStorage(InternalVars &IntVars){
 	auto &time = IntVars.Time;
 
 	const int nBins = IntVars.onemsbyTstep * IntVars.DelayRange;
-	const int CacheBuffering = 32;	// Each time a cache of size 64 will be pulled in 
-	static MexVector<__m128i> BinningBuffer(CacheBuffering*nBins);	//each element is 16 bytes
+	const int CacheBuffering = 128;	// Each time a cache of size 64 will be pulled in 
+	static MexVector<__m128i> BinningBuffer(CacheBuffering*nBins/4);	//each element is 16 bytes
 	static MexVector<int> BufferInsertIndex(nBins, 0);
+	static MexVector<int> AddressOffset(nBins, 0);
 
+	for (int j = 0; j < nBins; ++j){
+		AddressOffset[j] = (reinterpret_cast<size_t>(SpikeQueue[j].end()) & 0x0F) >> 2;
+	}
 	for (int j = 0; j < N; ++j){
 		if (LastSpikedTimeNeuron[j] == time){
 			int k = preSynNeuronSectionBeg[j];
 			int kend = preSynNeuronSectionEnd[j];
+
 			if (k != kend){
 				int NoofCurrNeuronSpikes = kend - k;
 				MexVector<Synapse>::iterator iSyn = Network.begin() + k;
@@ -458,23 +457,42 @@ void CachedSpikeStorage(InternalVars &IntVars){
 				//TotalSpikesTemp += iSynEnd - iSyn;
 				for (; iSyn < iSynEnd; ++iSyn, ++k){
 					int CurrIndex = (CurrentQIndex + iSyn->DelayinTsteps) % nBins;
+					int CurrAddressOffset = AddressOffset[CurrIndex];
 					int BufferIndex = BufferInsertIndex[CurrIndex];
 					int *BufferIndexPtr = &BufferInsertIndex[CurrIndex];
-					if (BufferIndex == CacheBuffering){
-						SpikeQueue[CurrIndex].push_size(CacheBuffering);
-						//TotalSpikesTemp += CacheBuffering;
-						__m128i* kbeg = reinterpret_cast<__m128i*>(SpikeQueue[CurrIndex].end() - CacheBuffering);
-						__m128i* kend = reinterpret_cast<__m128i*>(SpikeQueue[CurrIndex].end());
-						__m128i* lbeg = reinterpret_cast<__m128i*>(BinningBuffer.begin() + CurrIndex * CacheBuffering);
+					int *CurrAddressOffsetPtr = &AddressOffset[CurrIndex];
 
-						for (__m128i* k = kbeg, *l = lbeg; k < kend; k++, l++){
-							_mm_stream_si128(k, _mm_load_si128(l));
+					if (BufferIndex == CacheBuffering){
+						if (CurrAddressOffset){
+							for (int k = 0; k < 4-CurrAddressOffset; ++k){
+								SpikeQueue[CurrIndex].push_back(*(reinterpret_cast<int*>(BinningBuffer.begin() + (CurrIndex + 1)*CacheBuffering / 4)
+									                                      - (4-CurrAddressOffset) + k));
+								// This is bcuz, the buffer at CurrIndex ends at
+								// BinningBuffer.begin() + (CurrIndex + 1)*CacheBuffering / 4 [__m128*]
+								// therefore we move 4-CurrAddressOffset (which is the no. of elems to be inserted)
+								// behind and push back.
+								BufferIndex -= 4 - CurrAddressOffset;
+								*BufferIndexPtr -= 4 - CurrAddressOffset;
+								*CurrAddressOffsetPtr = 0;
+							}
 						}
-						BufferIndex = 0;
-						*BufferIndexPtr = 0;
+						else{
+							SpikeQueue[CurrIndex].push_size(CacheBuffering);
+							//TotalSpikesTemp += CacheBuffering;
+							__m128i* kbeg = reinterpret_cast<__m128i*>(SpikeQueue[CurrIndex].end() - CacheBuffering);
+							__m128i* kend = reinterpret_cast<__m128i*>(SpikeQueue[CurrIndex].end());
+							__m128i* lbeg = reinterpret_cast<__m128i*>(BinningBuffer.begin() + CurrIndex * CacheBuffering / 4);
+
+							for (__m128i* k = kbeg, *l = lbeg; k < kend; k++, l++){
+								_mm_stream_si128(k, _mm_load_si128(l));
+							}
+							BufferIndex = 0;
+							*BufferIndexPtr = 0;
+						}
+						
 					}
 
-					reinterpret_cast<int *>(BinningBuffer.begin())[CurrIndex*CacheBuffering * 4 + BufferIndex]
+					reinterpret_cast<int *>(BinningBuffer.begin())[CurrIndex*CacheBuffering + BufferIndex]
 						= k;
 					++*BufferIndexPtr;
 				}
@@ -482,7 +500,17 @@ void CachedSpikeStorage(InternalVars &IntVars){
 		}
 	}
 
-
+	for (int i = 0; i < nBins; ++i){
+		size_t CurrNElems = BufferInsertIndex[i];
+		SpikeQueue[i].push_size(CurrNElems);
+		int* kbeg = SpikeQueue[i].end() - CurrNElems;
+		int* kend = SpikeQueue[i].end();
+		int* lbeg = reinterpret_cast<int*>(BinningBuffer.begin() + i * CacheBuffering/4);
+		for (int* k = kbeg, *l = lbeg; k < kend; ++k, ++l){
+			*k = *l;
+		}
+		BufferInsertIndex[i] = 0;
+	}
 }
 
 void SimulateParallel(
@@ -509,6 +537,7 @@ void SimulateParallel(
 	atomicLongVect				&Iin2					= IntVars.Iin2;
 	BandLimGaussVect			&Irand					= IntVars.Irand;
 	MexMatrix<float>			&RandMat				= IntVars.RandMat;
+	MexMatrix<uint32_t>			&GenMat					= IntVars.GenMat;
 	MexVector<float>			&Iext					= IntVars.Iext;
 	MexVector<MexVector<int> >	&SpikeQueue				= IntVars.SpikeQueue;
 	MexVector<int>				&LastSpikedTimeNeuron	= IntVars.LSTNeuron;
@@ -611,6 +640,7 @@ void SimulateParallel(
 		iteration is cleared after the calculation of Itemp
 	*/
 	// Giving Initial State if Asked For
+	i = 0;
 	if (OutputControl & OutOps::INITIAL_STATE_REQ){
 		IntVars.DoSingleStateOutput(InitialStateOutput);
 	}
@@ -685,12 +715,13 @@ void SimulateParallel(
 		NeuronCalcTime += std::chrono::duration_cast<std::chrono::microseconds>(NeuronCalcTimeEnd - NeuronCalcTimeBeg).count();
 
 		// Generating RandMat
-		int LoopLimit = (8192 + i < nSteps) ? 8192 : nSteps - i;
+		int LoopLimit = (8192 + i <= nSteps) ? 8192 : nSteps - i + 1;
 		IRandGenTimeBeg = std::chrono::system_clock::now();
 		if (i % 8192 == 0){
 			for (int j = 0; j < LoopLimit; ++j){
 				Irand.generate();
 				RandMat[j] = Irand;
+				Irand.generator1().getstate().ConvertStatetoVect(GenMat[j]);
 			}
 		}
 		IRandGenTimeEnd = std::chrono::system_clock::now();

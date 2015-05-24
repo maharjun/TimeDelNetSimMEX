@@ -28,7 +28,7 @@ public:
 			this->z = (SeedState.size() > 3) ?
 				SeedState[3] : (uint32_t)chrono::system_clock::now().time_since_epoch().count();
 		}
-		void ConvertStatetoVect(MexVector<uint32_t> &SeedState){
+		void ConvertStatetoVect(MexVector<uint32_t> &SeedState) const{
 			if (SeedState.size() != 4)
 				SeedState.resize(4);
 			SeedState[0] = w;
@@ -36,7 +36,7 @@ public:
 			SeedState[2] = y;
 			SeedState[3] = z;
 		}
-		void ConvertStatetoVect(const MexVector<uint32_t> &SeedState){
+		void ConvertStatetoVect(const MexVector<uint32_t> &SeedState) const{
 			if (SeedState.size() != 4)
 				throw ExOps::EXCEPTION_CONST_MOD;
 			SeedState[0] = w;
@@ -74,7 +74,7 @@ public:
 		x = y; y = z; z = w;
 		return w = w ^ (w >> 19) ^ t ^ (t >> 8);
 	}
-	StateStruct getstate(void) const{
+	inline const StateStruct& getstate(void) const{
 		return State;
 	}
 	void setstate(const StateStruct &SeedState) {
@@ -162,6 +162,12 @@ public:
 	}
 	void resize(int NewSize){
 		MexVector<resTyp>::resize(NewSize, resTyp(0));
+	}
+	const XorShiftPlus& generator1(){
+		return Generator1;
+	}
+	const XorShiftPlus& generator2(){
+		return Generator2;
 	}
 
 	__inline pair<resTyp, resTyp> gaussRandVal(XorShiftPlus &Gen){
