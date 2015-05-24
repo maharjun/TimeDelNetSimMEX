@@ -85,7 +85,6 @@ void NeuronSimulate::operator() (tbb::blocked_range<int> &Range) const{
 	auto &StdDev = IntVars.StdDev;
 	auto &onemsbyTstep = IntVars.onemsbyTstep;
 	auto &time = IntVars.Time;
-	auto &NSpikesGenminProc = IntVars.NSpikesGenminProc;
 	auto k = (IntVars.i - 1) % 8192;
 
 	int QueueSize = onemsbyTstep*IntVars.DelayRange;
@@ -436,7 +435,6 @@ void CachedSpikeStorage(InternalVars &IntVars){
 
 	auto &CurrentQIndex = IntVars.CurrentQIndex;
 	auto &time = IntVars.Time;
-	auto &NSpikesGenminProc = IntVars.NSpikesGenminProc;
 
 	const int nBins = IntVars.onemsbyTstep * IntVars.DelayRange;
 	const int CacheBuffering = 128;	// Each time a cache of size 64 will be pulled in 
@@ -455,7 +453,6 @@ void CachedSpikeStorage(InternalVars &IntVars){
 
 			if (k != kend){
 				int NoofCurrNeuronSpikes = kend - k;
-				NSpikesGenminProc += NoofCurrNeuronSpikes;
 				MexVector<Synapse>::iterator iSyn = Network.begin() + k;
 				MexVector<Synapse>::iterator iSynEnd = Network.begin() + kend;
 
@@ -469,7 +466,6 @@ void CachedSpikeStorage(InternalVars &IntVars){
 
 					if (BufferIndex == CacheBuffering){
 						if (CurrAddressOffset){
-							NSpikesGenminProc -= 4 - CurrAddressOffset;
 							for (int k = 0; k < 4-CurrAddressOffset; ++k){
 								SpikeQueue[CurrIndex].push_back(*(reinterpret_cast<int*>(BinningBuffer.begin() + (CurrIndex + 1)*CacheBuffering / 4)
 									                                      - (4-CurrAddressOffset) + k));
@@ -483,7 +479,6 @@ void CachedSpikeStorage(InternalVars &IntVars){
 							*CurrAddressOffsetPtr = 0;
 						}
 						else{
-							NSpikesGenminProc -= CacheBuffering;
 							SpikeQueue[CurrIndex].push_size(CacheBuffering);
 							//TotalSpikesTemp += CacheBuffering;
 							__m128i* kbeg = reinterpret_cast<__m128i*>(SpikeQueue[CurrIndex].end() - CacheBuffering);
@@ -509,7 +504,6 @@ void CachedSpikeStorage(InternalVars &IntVars){
 
 	for (int i = 0; i < nBins; ++i){
 		size_t CurrNElems = BufferInsertIndex[i];
-		NSpikesGenminProc -= CurrNElems;
 		SpikeQueue[i].push_size(CurrNElems);
 		int* kbeg = SpikeQueue[i].end() - CurrNElems;
 		int* kend = SpikeQueue[i].end();
@@ -763,7 +757,6 @@ void SimulateParallel(
 		IntVars.DoSingleStateOutput(FinalStateOutput);
 	}
 
-	cout << "Difference in No of spikes generated and processed = " << IntVars.NSpikesGenminProc << endl;
 	cout << "CurrentExt Generation Time = " << IExtGenTime / 1000 << "millisecs" << endl;
 	cout << "CurrentRand Generation Time = " << IRandGenTime / 1000 << "millisecs" << endl;
 	cout << "Current Update Time = " << IUpdateTime / 1000 << "millisecs" << endl;
