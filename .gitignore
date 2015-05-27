@@ -45,6 +45,7 @@ Temporary Items
 # Visual Studio Related Rules
 /*
 !/*.*
+/*.suo
 /*.*sdf
 
 !/TimeDelNetSimMEX_Exe
