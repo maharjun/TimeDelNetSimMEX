@@ -95,6 +95,10 @@ int getOutputControl(char* OutputControlSequence){
 			OutputControl = AddorRemove ? 
 			         OutputControl | OutOps::I_TOT_REQ : 
 					 OutputControl & ~(OutOps::I_TOT_REQ);
+		if (!_strcmpi(SequenceWord, "SpikeList"))
+			OutputControl = AddorRemove ? 
+			         OutputControl | OutOps::SPIKE_LIST_REQ : 
+					 OutputControl & ~(OutOps::SPIKE_LIST_REQ);
 		if (!_strcmpi(SequenceWord, "Final"))
 			OutputControl = AddorRemove ? 
 			         OutputControl | OutOps::FINAL_STATE_REQ : 
@@ -321,6 +325,7 @@ mxArray * putOutputToMatlabStruct(OutputVarsStruct &Output){
 		"WeightOut",
 		"Iin",
 		"Itot",
+		"SpikeList",
 		nullptr
 	};
 
@@ -336,6 +341,8 @@ mxArray * putOutputToMatlabStruct(OutputVarsStruct &Output){
 	mxSetField(ReturnPointer, 0, "Iin", assignmxArray(Output.Iin, mxSINGLE_CLASS));
 	// Assigning Itot
 	mxSetField(ReturnPointer, 0, "Itot", assignmxArray(Output.Itot, mxSINGLE_CLASS));
+	// Assigning SpikeList
+	mxSetField(ReturnPointer, 0, "SpikeList", assignmxArray(Output.SpikeList, mxINT32_CLASS));
 
 	return ReturnPointer;
 }

@@ -57,7 +57,7 @@ void CurrentUpdate::operator () (const tbb::blocked_range<int*> &BlockedRange) c
 		__m128 AddedCurrent;
 		AddedCurrent.m128_u64[0] = 0; AddedCurrent.m128_u64[1] = 0;
 		AddedCurrent.m128_f32[0] = CurrentSynapse.Weight;
-		AddedCurrent.m128_u32[0] += (17 << 23);
+		AddedCurrent.m128_u32[0] += (32 << 23);
 
 		Iin1[CurrentSynapse.NEnd - 1].fetch_and_add((long long)AddedCurrent.m128_f32[0]);
 		Iin2[CurrentSynapse.NEnd - 1].fetch_and_add((long long)AddedCurrent.m128_f32[0]);
@@ -99,7 +99,7 @@ void NeuronSimulate::operator() (tbb::blocked_range<int> &Range) const{
 		else{
 			//Implementing Izhikevich differential equation
 			float Vnew, Unew;
-			Vnew = Vnow[j] + (Vnow[j] * (0.04f*Vnow[j] + 5.0f) + 140.0f - Unow[j] + (float)(Iin2[j] - Iin1[j]) / (1 << 17) + Iext[j] + StdDev*RandMat(k,j)) / onemsbyTstep;
+			Vnew = Vnow[j] + (Vnow[j] * (0.04f*Vnow[j] + 5.0f) + 140.0f - Unow[j] + (float)(Iin2[j] - Iin1[j]) / (1i64 << 32) + Iext[j] + StdDev*RandMat(k,j)) / onemsbyTstep;
 			Unew = Unow[j] + (Neurons[j].a*(Neurons[j].b*Vnow[j] - Unow[j])) / onemsbyTstep;
 			Vnow[j] = (Vnew > -100)? Vnew: -100;
 			Unow[j] = Unew;
@@ -232,6 +232,10 @@ void OutputVarsStruct::initialize(const InternalVars &IntVars){
 		this->Iin = MexMatrix<float>(TimeDimLen, N);
 	if (OutputControl & OutOps::I_TOT_REQ)
 		this->Itot = MexMatrix<float>(TimeDimLen, N);
+	if ((OutputControl & OutOps::SPIKE_LIST_REQ) && !StorageStepSize)
+		// the size used below is to store all the spikes generated but not yet arrived
+		// also, spiek storage is always only done in non-sparse mode.
+		this->SpikeList = MexVector<MexVector<int >>(nSteps + IntVars.DelayRange*onemsbyTstep - 1, MexVector<int>());
 }
 void FinalStateStruct::initialize(const InternalVars &IntVars){
 	int OutputControl	= IntVars.OutputControl;
@@ -289,10 +293,10 @@ void InternalVars::DoSparseOutput(StateVarsOutStruct &StateOut, OutputVarsStruct
 		StateOut.UOut[CurrentInsertPos] = U;
 	if (OutputControl & OutOps::I_IN_1_REQ)
 		for (int j = 0; j < N; ++j)
-			StateOut.Iin1Out(CurrentInsertPos, j) = (float)Iin1[j] / (1 << 17);
+			StateOut.Iin1Out(CurrentInsertPos, j) = (float)Iin1[j] / (1i64 << 32);
 	if (OutputControl & OutOps::I_IN_2_REQ)
 		for (int j = 0; j < N; ++j)
-			StateOut.Iin2Out(CurrentInsertPos, j) = (float)Iin2[j] / (1 << 17);
+			StateOut.Iin2Out(CurrentInsertPos, j) = (float)Iin2[j] / (1i64 << 32);
 	// Storing Random Current related state vars
 	if (OutputControl & OutOps::I_RAND_REQ)
 		StateOut.IrandOut[CurrentInsertPos] = RandMat[iint];
@@ -328,17 +332,19 @@ void InternalVars::DoSparseOutput(StateVarsOutStruct &StateOut, OutputVarsStruct
 	// Storing Iin
 	if (OutputControl & OutOps::I_IN_REQ){
 		for (int j = 0; j < N; ++j)
-			OutVars.Iin(CurrentInsertPos, j) = (float)(Iin2[j] - Iin1[j]) / (1 << 17);
+			OutVars.Iin(CurrentInsertPos, j) = (float)(Iin2[j] - Iin1[j]) / (1i64 << 32);
 	}
 
 	// Storing Itot
 	if (OutputControl & OutOps::I_TOT_REQ){
 		for (int j = 0; j < N; ++j)
-			OutVars.Itot(CurrentInsertPos, j) = Iext[j] + StdDev*RandMat(iint,j) + (float)(Iin2[j] - Iin1[j]) / (1 << 17);
+			OutVars.Itot(CurrentInsertPos, j) = Iext[j] + StdDev*RandMat(iint,j) + (float)(Iin2[j] - Iin1[j]) / (1i64 << 32);
 	}
+
 }
 void InternalVars::DoFullOutput(StateVarsOutStruct &StateOut, OutputVarsStruct &OutVars){
 	if (!StorageStepSize){
+		int nSteps = onemsbyTstep*NoOfms;
 		int CurrentInsertPos = i - 1;
 		int iint = i % 8192;
 		int QueueSize = onemsbyTstep * DelayRange;
@@ -349,10 +355,10 @@ void InternalVars::DoFullOutput(StateVarsOutStruct &StateOut, OutputVarsStruct &
 			StateOut.UOut[CurrentInsertPos] = U;
 		if (OutputControl & OutOps::I_IN_1_REQ)
 			for (int j = 0; j < N; ++j)
-				StateOut.Iin1Out(CurrentInsertPos, j) = (float)Iin1[j] / (1 << 17);
+				StateOut.Iin1Out(CurrentInsertPos, j) = (float)Iin1[j] / (1i64 << 32);
 		if (OutputControl & OutOps::I_IN_2_REQ)
 			for (int j = 0; j < N; ++j)
-				StateOut.Iin2Out(CurrentInsertPos, j) = (float)Iin2[j] / (1 << 17);
+				StateOut.Iin2Out(CurrentInsertPos, j) = (float)Iin2[j] / (1i64 << 32);
 		// Storing Random Curent Related State vars
 		if (OutputControl & OutOps::I_RAND_REQ)
 			StateOut.IrandOut[CurrentInsertPos] = RandMat[iint];
@@ -388,21 +394,32 @@ void InternalVars::DoFullOutput(StateVarsOutStruct &StateOut, OutputVarsStruct &
 		// Storing Iin
 		if (OutputControl & OutOps::I_IN_REQ){
 			for (int j = 0; j < N; ++j)
-				OutVars.Iin(CurrentInsertPos, j) = (float)(Iin2[j] - Iin1[j]) / (1 << 17);
+				OutVars.Iin(CurrentInsertPos, j) = (float)(Iin2[j] - Iin1[j]) / (1i64 << 32);
 		}
 
 		// Storing Itot
 		if (OutputControl & OutOps::I_TOT_REQ){
 			for (int j = 0; j < N; ++j)
-				OutVars.Itot(CurrentInsertPos, j) = Iext[j] + StdDev*RandMat(iint, j) + (float)(Iin2[j] - Iin1[j]) / (1 << 17);
+				OutVars.Itot(CurrentInsertPos, j) = Iext[j] + StdDev*RandMat(iint, j) + (float)(Iin2[j] - Iin1[j]) / (1i64 << 32);
+		}
+
+		// Storing Spike List
+		if (OutputControl & OutOps::SPIKE_LIST_REQ){
+			OutVars.SpikeList[CurrentInsertPos] = SpikeQueue[CurrentQIndex];
+			if (i == nSteps){
+				// Storing spikes which are generated but not gonna arrive next turn
+				for (int j = 1; j < DelayRange*onemsbyTstep; ++j){
+					OutVars.SpikeList[CurrentInsertPos + j] = SpikeQueue[(CurrentQIndex + j) % (DelayRange*onemsbyTstep)];
+				}
+			}
 		}
 	}
 }
 void InternalVars::DoSingleStateOutput(SingleStateStruct &FinalStateOut){
 	int QueueSize = onemsbyTstep * DelayRange;
 	for (int j = 0; j < N; ++j){
-		FinalStateOut.Iin1[j] = (float)Iin1[j] / (1 << 17);
-		FinalStateOut.Iin2[j] = (float)Iin2[j] / (1 << 17);
+		FinalStateOut.Iin1[j] = (float)Iin1[j] / (1i64 << 32);
+		FinalStateOut.Iin2[j] = (float)Iin2[j] / (1i64 << 32);
 	}
 	// storing Random curret related state vars
 	FinalStateOut.Irand = RandMat[i % 8192];

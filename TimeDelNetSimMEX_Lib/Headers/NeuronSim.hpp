@@ -31,8 +31,9 @@ struct OutOps{
 		LASTSPIKED_NEU_REQ  = (1 << 11), 
 		LASTSPIKED_SYN_REQ  = (1 << 12), 
 		I_TOT_REQ           = (1 << 13), 
-		INITIAL_STATE_REQ   = (1 << 14), 
-		FINAL_STATE_REQ     = (1 << 15)
+		SPIKE_LIST_REQ      = (1 << 14), 
+		INITIAL_STATE_REQ   = (1 << 15), 
+		FINAL_STATE_REQ     = (1 << 16), 
 	};
 };
 
@@ -239,7 +240,7 @@ struct InternalVars{
 		// Setting Initial Conditions for INTERNAL CURRENT 1
 		if (IArgs.Iin1.size() == N){
 			for (int i = 0; i < N; ++i){
-				Iin1[i] = (long long int)(IArgs.Iin1[i] * (1 << 17));
+				Iin1[i] = (long long int)(IArgs.Iin1[i] * (1i64 << 32));
 			}
 		}
 		else if (IArgs.Iin1.size()){
@@ -253,7 +254,7 @@ struct InternalVars{
 		// Setting Initial Conditions for INTERNAL CURRENT 2
 		if (IArgs.Iin2.size() == N){
 			for (int i = 0; i < N; ++i){
-				Iin2[i] = (long long int)(IArgs.Iin2[i] * (1 << 17));
+				Iin2[i] = (long long int)(IArgs.Iin2[i] * (1i64 << 32));
 			}
 		}
 		else if (IArgs.Iin2.size()){
@@ -330,11 +331,13 @@ struct OutputVarsStruct{
 	MexMatrix<float> WeightOut;
 	MexMatrix<float> Iin;
 	MexMatrix<float> Itot;
+	MexVector<MexVector<int> > SpikeList;
 
 	OutputVarsStruct() :
 		WeightOut(),
 		Itot(),
-		Iin() {}
+		Iin(),
+		SpikeList(){}
 
 	void initialize(const InternalVars &);
 };
