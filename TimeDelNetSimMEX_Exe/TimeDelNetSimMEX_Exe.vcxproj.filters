@@ -21,6 +21,9 @@
     <ClCompile Include="..\TimeDelNetSimMEX_Lib\Source\ParallelStructuresII_mex.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\TimeDelNetSimMEX_Lib\Headers\MexMem.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\TimeDelNetSimMEX_Lib\Headers\FiltRandomTBB.hpp">

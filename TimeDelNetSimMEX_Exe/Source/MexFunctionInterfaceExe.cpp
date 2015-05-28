@@ -60,8 +60,16 @@ int main(){
 			return 0;
 		}
 	}
-
-	mexFunction(4, lhs, 1, rhs);
+	try{
+		mexFunction(4, lhs, 1, rhs);
+	}
+	catch (ExOps::ExCodes A){
+		printf("Mem Limit of %lld MB Exceeded\n", (MemCounter::MemUsageLimit) >> 20);
+		system("pause");
+		mxDestroyArray(Input);
+		return 0;
+	}
+	
 
 	OutputVars = lhs[0];
 	StateVars = lhs[1];

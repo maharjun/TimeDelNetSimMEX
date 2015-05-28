@@ -19,6 +19,7 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="Headers\MexMem.cpp" />
     <ClCompile Include="Source\MexFunctionInterface.cpp" />
     <ClCompile Include="Source\ParallelStructuresII_mex.cpp" />
   </ItemGroup>

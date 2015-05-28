@@ -50,13 +50,14 @@ InputStruct.Delay  = single(Delays);
 InputStruct.onemsbyTstep          = int32(4);
 InputStruct.NoOfms                = int32(80000);
 InputStruct.DelayRange            = int32(RecurrentNetParams.DelayRange);
-InputStruct.StorageStepSize       = int32(1000);
+InputStruct.StorageStepSize       = int32(0);
 InputStruct.OutputControl         = strjoin(OutputOptions);
 InputStruct.StatusDisplayInterval = int32(8000);
 
 InputStruct.OutputFile = 'SimResults1000DebugSparseLong.mat';
-save('../../TimeDelNetSimMEX_Exe/Data/InputData.mat', 'InputStruct');
+% save('../../TimeDelNetSimMEX_Exe/Data/InputData.mat', 'InputStruct');
 
+[OutputVars, StateVars, FinalState, InitState] = TimeDelNetSimMEX_Lib(InputStruct);
 % Run the program after this
 %% Get Detailed vector from Initial State 
 % This is to check correctness of initial state return with default inputs

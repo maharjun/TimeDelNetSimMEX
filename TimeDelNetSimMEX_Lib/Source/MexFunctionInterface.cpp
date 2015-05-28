@@ -479,14 +479,28 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, mxArray *prhs[]){
 
 	// Running Simulation Function.
 	chrono::system_clock::time_point TStart = chrono::system_clock::now();
-	SimulateParallel(
-		move(InputArgList),
-		PureOutput,
-		StateVarsOutput,
-		FinalStateOutput,
-		InitialStateOutput);
-	chrono::system_clock::time_point TEnd = chrono::system_clock::now();
+	try{
+		
+		SimulateParallel(
+			move(InputArgList),
+			PureOutput,
+			StateVarsOutput,
+			FinalStateOutput,
+			InitialStateOutput);
+	}
+	catch(ExOps::ExCodes A){
+		if (A = ExOps::EXCEPTION_MEM_FULL){
+		#ifdef MEX_LIB
+			char OutputString[256];
+			sprintf_s(OutputString, 256, "Mem Limit of %lld MB Exceeded\n", (MemCounter::MemUsageLimit) >> 20);
+			mexErrMsgIdAndTxt("CppSimException:MemOverFlow", OutputString);
+		#elif defined MEX_EXE
+			throw A;
+		#endif
+		}
+	}
 
+	chrono::system_clock::time_point TEnd = chrono::system_clock::now();
 #ifdef MEX_LIB
 	mexPrintf("The Time taken = %d milliseconds", chrono::duration_cast<chrono::milliseconds>(TEnd - TStart).count());
 	mexEvalString("drawnow");

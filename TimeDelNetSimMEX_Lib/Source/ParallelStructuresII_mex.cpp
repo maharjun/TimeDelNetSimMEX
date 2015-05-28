@@ -632,6 +632,8 @@ void SimulateParallel(
 	//--------------------------------- Initializing output Arrays ---------------------------------//
 	//----------------------------------------------------------------------------------------------//
 
+	
+
 	StateVarsOutput.initialize(IntVars);
 	PureOutputs.initialize(IntVars);
 	FinalStateOutput.initialize(IntVars);

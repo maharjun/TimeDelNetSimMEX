@@ -19,6 +19,7 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="..\TimeDelNetSimMEX_Lib\Headers\MexMem.cpp" />
     <ClCompile Include="..\TimeDelNetSimMEX_Lib\Source\ParallelStructuresII_mex.cpp" />
     <ClCompile Include="Source\MexFunctionInterfaceExe.cpp" />
   </ItemGroup>

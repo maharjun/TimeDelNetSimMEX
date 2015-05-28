@@ -21,6 +21,9 @@
     <ClCompile Include="Source\ParallelStructuresII_mex.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="Headers\MexMem.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Headers\FiltRandomTBB.hpp">
