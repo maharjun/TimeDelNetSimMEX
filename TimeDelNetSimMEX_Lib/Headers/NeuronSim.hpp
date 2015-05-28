@@ -22,18 +22,19 @@ struct OutOps{
 		I_IN_2_REQ          = (1 << 2), 
 		I_IN_REQ            = (1 << 3), 
 		I_RAND_REQ          = (1 << 4), 
-		GEN_STATE_REQ       = (1 << 5), 
-		TIME_REQ            = (1 << 6), 
-		U_REQ               = (1 << 7), 
-		WEIGHT_REQ          = (1 << 8), 
-		CURRENT_QINDS_REQ   = (1 << 9), 
-		SPIKE_QUEUE_REQ     = (1 << 10), 
-		LASTSPIKED_NEU_REQ  = (1 << 11), 
-		LASTSPIKED_SYN_REQ  = (1 << 12), 
-		I_TOT_REQ           = (1 << 13), 
-		SPIKE_LIST_REQ      = (1 << 14), 
-		INITIAL_STATE_REQ   = (1 << 15), 
-		FINAL_STATE_REQ     = (1 << 16), 
+		WEIGHT_DERIV_REQ    = (1 << 5), 
+		GEN_STATE_REQ       = (1 << 6), 
+		TIME_REQ            = (1 << 7), 
+		U_REQ               = (1 << 8), 
+		WEIGHT_REQ          = (1 << 9), 
+		CURRENT_QINDS_REQ   = (1 << 10), 
+		SPIKE_QUEUE_REQ     = (1 << 11), 
+		LASTSPIKED_NEU_REQ  = (1 << 12), 
+		LASTSPIKED_SYN_REQ  = (1 << 13), 
+		I_TOT_REQ           = (1 << 14), 
+		SPIKE_LIST_REQ      = (1 << 15), 
+		INITIAL_STATE_REQ   = (1 << 16), 
+		FINAL_STATE_REQ     = (1 << 17)
 	};
 };
 
@@ -88,6 +89,7 @@ struct InputArgs{
 	MexVector<float> U;
 	MexVector<float> Iin1;
 	MexVector<float> Iin2;
+	MexVector<float> WeightDeriv;
 
 	MexVector<uint32_t> GenState;
 	MexVector<float> Irand;
@@ -112,6 +114,7 @@ struct InputArgs{
 		U(),
 		Iin1(),
 		Iin2(),
+		WeightDeriv(),
 		GenState(),
 		Irand(),
 		SpikeQueue(),
@@ -148,6 +151,7 @@ struct InternalVars{
 	MexVector<float> &U;
 	atomicLongVect Iin1;
 	atomicLongVect Iin2;
+	MexVector<float> WeightDeriv;
 	BandLimGaussVect Irand;
 	MexMatrix<float> RandMat;
 	MexMatrix<uint32_t> GenMat;
@@ -187,6 +191,7 @@ struct InternalVars{
 		U(IArgs.U),
 		Iin1(N),	// Iin is defined separately as an atomic vect.
 		Iin2(N),
+		WeightDeriv(M),
 		Irand(),	// Irand defined separately.
 		RandMat(8192, N),
 		GenMat(8192, 4),
@@ -218,8 +223,8 @@ struct InternalVars{
 		// Setting Initial Conditions of V and U
 		if (U.istrulyempty()){
 			U.resize(N);
-			for (int i = 0; i<N; ++i)
-				U[i] = Neurons[i].b*(Neurons[i].b - 5.0f - sqrt((5.0f - Neurons[i].b)*(5.0f - Neurons[i].b) - 22.4f)) / 0.08f;
+			for (int j = 0; j<N; ++j)
+				U[j] = Neurons[j].b*(Neurons[j].b - 5.0f - sqrt((5.0f - Neurons[j].b)*(5.0f - Neurons[j].b) - 22.4f)) / 0.08f;
 		}
 		else if (U.size() != N){
 			// GIVE ERROR MESSAGE HERE
@@ -228,8 +233,8 @@ struct InternalVars{
 
 		if (V.istrulyempty()){
 			V.resize(N);
-			for (int i = 0; i<N; ++i){
-				V[i] = (Neurons[i].b - 5.0f - sqrt((5.0f - Neurons[i].b)*(5.0f - Neurons[i].b) - 22.4f)) / 0.08f;
+			for (int j = 0; j<N; ++j){
+				V[j] = (Neurons[j].b - 5.0f - sqrt((5.0f - Neurons[j].b)*(5.0f - Neurons[j].b) - 22.4f)) / 0.08f;
 			}
 		}
 		else if (V.size() != N){
@@ -239,8 +244,8 @@ struct InternalVars{
 
 		// Setting Initial Conditions for INTERNAL CURRENT 1
 		if (IArgs.Iin1.size() == N){
-			for (int i = 0; i < N; ++i){
-				Iin1[i] = (long long int)(IArgs.Iin1[i] * (1i64 << 32));
+			for (int j = 0; j < N; ++j){
+				Iin1[j] = (long long int)(IArgs.Iin1[j] * (1i64 << 32));
 			}
 		}
 		else if (IArgs.Iin1.size()){
@@ -253,8 +258,8 @@ struct InternalVars{
 
 		// Setting Initial Conditions for INTERNAL CURRENT 2
 		if (IArgs.Iin2.size() == N){
-			for (int i = 0; i < N; ++i){
-				Iin2[i] = (long long int)(IArgs.Iin2[i] * (1i64 << 32));
+			for (int j = 0; j < N; ++j){
+				Iin2[j] = (long long int)(IArgs.Iin2[j] * (1i64 << 32));
 			}
 		}
 		else if (IArgs.Iin2.size()){
@@ -264,6 +269,18 @@ struct InternalVars{
 		//else{
 		//	Iin2 is already initialized to zero by tbb::zero_allocator<long long>
 		//}
+
+		// Setting Initial Conditions for Weight Derivative
+		if (IArgs.WeightDeriv.istrulyempty()){
+			for (auto WeightDerivElem : WeightDeriv) WeightDerivElem = 0;
+		}
+		else if (IArgs.WeightDeriv.size() == M){
+			WeightDeriv = IArgs.WeightDeriv;
+		}
+		else{
+			// Return Exception
+			return;
+		}
 
 		// Setting up IRand and corresponding Random Generators.
 		XorShiftPlus Gen1;
@@ -348,7 +365,7 @@ struct StateVarsOutStruct{
 	MexMatrix<float> UOut;
 	MexMatrix<float> Iin1Out;
 	MexMatrix<float> Iin2Out;
-
+	MexMatrix<float> WeightDerivOut;
 	MexMatrix<uint32_t> GenStateOut;
 	MexMatrix<float> IrandOut;
 
@@ -364,6 +381,7 @@ struct StateVarsOutStruct{
 		UOut(),
 		Iin1Out(),
 		Iin2Out(),
+		WeightDerivOut(),
 		GenStateOut(),
 		IrandOut(),
 		TimeOut(),
@@ -380,7 +398,7 @@ struct SingleStateStruct{
 	MexVector<float> U;
 	MexVector<float> Iin1;
 	MexVector<float> Iin2;
-
+	MexVector<float> WeightDeriv;
 	MexVector<uint32_t> GenState;
 	MexVector<float> Irand;
 
@@ -396,6 +414,7 @@ struct SingleStateStruct{
 		U(),
 		Iin1(),
 		Iin2(),
+		WeightDeriv(),
 		GenState(),
 		Irand(),
 		SpikeQueue(),

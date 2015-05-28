@@ -64,6 +64,7 @@ Temporary Items
 !TimeDelNetSimMEX_Lib/Items
 !TimeDelNetSimMEX_Lib/PropertySheets
 !TimeDelNetSimMEX_Lib/MatlabSource
+TimeDelNetSimMEX_Lib/MatlabSource/*.asv
 /*.open*
 # ignore all ~version of word documents
 *~*.*

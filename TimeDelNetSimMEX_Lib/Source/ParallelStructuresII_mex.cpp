@@ -186,6 +186,9 @@ void StateVarsOutStruct::initialize(const InternalVars &IntVars) {
 	if (OutputControl & OutOps::I_IN_2_REQ)
 		this->Iin2Out = MexMatrix<float>(TimeDimLen, N);
 
+	if (OutputControl & OutOps::WEIGHT_DERIV_REQ)
+		this->WeightDerivOut = MexMatrix<float>(TimeDimLen, M);
+
 	if (OutputControl & OutOps::I_RAND_REQ)
 		this->IrandOut = MexMatrix<float>(TimeDimLen, N);
 
@@ -249,6 +252,7 @@ void FinalStateStruct::initialize(const InternalVars &IntVars){
 		this->U = MexVector<float>(N);
 		this->Iin1 = MexVector<float>(N);
 		this->Iin2 = MexVector<float>(N);
+		this->WeightDeriv = MexVector<float>(M);
 		this->Irand = MexVector<float>(N);
 		this->GenState = MexVector<uint32_t>(4);
 		this->Weight = MexVector<float>(M);
@@ -271,6 +275,7 @@ void InitialStateStruct::initialize(const InternalVars &IntVars){
 		this->U = MexVector<float>(N);
 		this->Iin1 = MexVector<float>(N);
 		this->Iin2 = MexVector<float>(N);
+		this->WeightDeriv = MexVector<float>(M);
 		this->GenState = MexVector<uint32_t>(4);
 		this->Weight = MexVector<float>(M);
 		this->Weight = MexVector<float>(M);
@@ -297,6 +302,12 @@ void InternalVars::DoSparseOutput(StateVarsOutStruct &StateOut, OutputVarsStruct
 	if (OutputControl & OutOps::I_IN_2_REQ)
 		for (int j = 0; j < N; ++j)
 			StateOut.Iin2Out(CurrentInsertPos, j) = (float)Iin2[j] / (1i64 << 32);
+
+	//Storing Weight Derivative
+	if (OutputControl & OutOps::WEIGHT_DERIV_REQ){
+		StateOut.WeightDerivOut[CurrentInsertPos] = WeightDeriv;
+	}
+
 	// Storing Random Current related state vars
 	if (OutputControl & OutOps::I_RAND_REQ)
 		StateOut.IrandOut[CurrentInsertPos] = RandMat[iint];
@@ -359,6 +370,12 @@ void InternalVars::DoFullOutput(StateVarsOutStruct &StateOut, OutputVarsStruct &
 		if (OutputControl & OutOps::I_IN_2_REQ)
 			for (int j = 0; j < N; ++j)
 				StateOut.Iin2Out(CurrentInsertPos, j) = (float)Iin2[j] / (1i64 << 32);
+
+		//Storing Weight Derivative
+		if (OutputControl & OutOps::WEIGHT_DERIV_REQ){
+			StateOut.WeightDerivOut[CurrentInsertPos] = WeightDeriv;
+		}
+
 		// Storing Random Curent Related State vars
 		if (OutputControl & OutOps::I_RAND_REQ)
 			StateOut.IrandOut[CurrentInsertPos] = RandMat[iint];
@@ -415,28 +432,29 @@ void InternalVars::DoFullOutput(StateVarsOutStruct &StateOut, OutputVarsStruct &
 		}
 	}
 }
-void InternalVars::DoSingleStateOutput(SingleStateStruct &FinalStateOut){
+void InternalVars::DoSingleStateOutput(SingleStateStruct &SingleStateOut){
 	int QueueSize = onemsbyTstep * DelayRange;
 	for (int j = 0; j < N; ++j){
-		FinalStateOut.Iin1[j] = (float)Iin1[j] / (1i64 << 32);
-		FinalStateOut.Iin2[j] = (float)Iin2[j] / (1i64 << 32);
+		SingleStateOut.Iin1[j] = (float)Iin1[j] / (1i64 << 32);
+		SingleStateOut.Iin2[j] = (float)Iin2[j] / (1i64 << 32);
 	}
 	// storing Random curret related state vars
-	FinalStateOut.Irand = RandMat[i % 8192];
-	FinalStateOut.GenState = GenMat[i % 8192];
+	SingleStateOut.Irand = RandMat[i % 8192];
+	SingleStateOut.GenState = GenMat[i % 8192];
 
-	FinalStateOut.V = V;
-	FinalStateOut.U = U;
+	SingleStateOut.V = V;
+	SingleStateOut.U = U;
 	for (int j = 0; j < M; ++j){
-		FinalStateOut.Weight[j] = Network[j].Weight;
+		SingleStateOut.Weight[j] = Network[j].Weight;
 	}
+	SingleStateOut.WeightDeriv = WeightDeriv;
 	for (int j = 0; j < QueueSize; ++j){
-		FinalStateOut.SpikeQueue[j] = SpikeQueue[j];
+		SingleStateOut.SpikeQueue[j] = SpikeQueue[j];
 	}
-	FinalStateOut.CurrentQIndex = CurrentQIndex;
-	FinalStateOut.LSTNeuron = LSTNeuron;
-	FinalStateOut.LSTSyn = LSTSyn;
-	FinalStateOut.Time = Time;
+	SingleStateOut.CurrentQIndex = CurrentQIndex;
+	SingleStateOut.LSTNeuron = LSTNeuron;
+	SingleStateOut.LSTSyn = LSTSyn;
+	SingleStateOut.Time = Time;
 }
 
 void CachedSpikeStorage(InternalVars &IntVars){
@@ -630,14 +648,14 @@ void SimulateParallel(
 	PreSynNeuronSectionEnd[Network[M - 1].NStart - 1] = M;
 	PostSynNeuronSectionEnd[Network[AuxArray[M - 1]].NEnd - 1] = M;
 
-	for (i = 1; i<M; ++i){
-		if (Network[i - 1].NStart != Network[i].NStart){
-			PreSynNeuronSectionBeg[Network[i].NStart - 1] = i;
-			PreSynNeuronSectionEnd[Network[i - 1].NStart - 1] = i;
+	for (int j = 1; j<M; ++j){
+		if (Network[j - 1].NStart != Network[j].NStart){
+			PreSynNeuronSectionBeg[Network[j].NStart - 1] = j;
+			PreSynNeuronSectionEnd[Network[j - 1].NStart - 1] = j;
 		}
-		if (Network[AuxArray[i - 1]].NEnd != Network[AuxArray[i]].NEnd){
-			PostSynNeuronSectionBeg[Network[AuxArray[i]].NEnd - 1] = i;
-			PostSynNeuronSectionEnd[Network[AuxArray[i-1]].NEnd - 1] = i;
+		if (Network[AuxArray[j - 1]].NEnd != Network[AuxArray[j]].NEnd){
+			PostSynNeuronSectionBeg[Network[AuxArray[j]].NEnd - 1] = j;
+			PostSynNeuronSectionEnd[Network[AuxArray[j - 1]].NEnd - 1] = j;
 		}
 	}
 
@@ -659,7 +677,7 @@ void SimulateParallel(
 		iteration is cleared after the calculation of Itemp
 	*/
 	// Giving Initial State if Asked For
-	i = 0;
+	
 	if (OutputControl & OutOps::INITIAL_STATE_REQ){
 		IntVars.DoSingleStateOutput(InitialStateOutput);
 	}
@@ -770,6 +788,8 @@ void SimulateParallel(
 			maxSpikeno = 0;
 		}
 	}
+	// This needs to be done as the state corresponds to i = nSteps not i = nSteps+1
+	i = i - 1;
 	if ((OutputControl & OutOps::FINAL_STATE_REQ)){
 		IntVars.DoSingleStateOutput(FinalStateOutput);
 	}
