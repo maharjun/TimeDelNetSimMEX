@@ -18,8 +18,8 @@ end
 
 InputStruct.V = StateStruct.V(:, timeIndex);
 InputStruct.U = StateStruct.U(:, timeIndex);
-InputStruct.Iin1 = StateStruct.Iin1(:, timeIndex);
-InputStruct.Iin2 = StateStruct.Iin2(:, timeIndex);
+InputStruct.Iin = StateStruct.Iin(:, timeIndex);
+% InputStruct.Iin2 = StateStruct.Iin2(:, timeIndex);
 InputStruct.Irand = StateStruct.Irand(:, timeIndex);
 InputStruct.GenState = StateStruct.GenState(:, timeIndex);
 InputStruct.Time = StateStruct.Time(timeIndex);

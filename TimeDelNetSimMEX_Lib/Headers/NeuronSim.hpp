@@ -17,24 +17,22 @@ using namespace std;
 
 struct OutOps{
 	enum {
-		V_REQ               = (1 << 0), 
-		I_IN_1_REQ          = (1 << 1), 
-		I_IN_2_REQ          = (1 << 2), 
-		I_IN_REQ            = (1 << 3), 
-		I_RAND_REQ          = (1 << 4), 
-		WEIGHT_DERIV_REQ    = (1 << 5), 
-		GEN_STATE_REQ       = (1 << 6), 
-		TIME_REQ            = (1 << 7), 
-		U_REQ               = (1 << 8), 
-		WEIGHT_REQ          = (1 << 9), 
-		CURRENT_QINDS_REQ   = (1 << 10), 
-		SPIKE_QUEUE_REQ     = (1 << 11), 
-		LASTSPIKED_NEU_REQ  = (1 << 12), 
-		LASTSPIKED_SYN_REQ  = (1 << 13), 
-		I_TOT_REQ           = (1 << 14), 
-		SPIKE_LIST_REQ      = (1 << 15), 
-		INITIAL_STATE_REQ   = (1 << 16), 
-		FINAL_STATE_REQ     = (1 << 17)
+		V_REQ               = (1 << 0 ),
+		I_IN_REQ            = (1 << 1 ), 
+		I_RAND_REQ          = (1 << 2 ), 
+		WEIGHT_DERIV_REQ    = (1 << 3 ), 
+		GEN_STATE_REQ       = (1 << 4 ), 
+		TIME_REQ            = (1 << 5 ), 
+		U_REQ               = (1 << 6 ), 
+		WEIGHT_REQ          = (1 << 7 ), 
+		CURRENT_QINDS_REQ   = (1 << 8 ), 
+		SPIKE_QUEUE_REQ     = (1 << 9 ), 
+		LASTSPIKED_NEU_REQ  = (1 << 10), 
+		LASTSPIKED_SYN_REQ  = (1 << 11), 
+		I_TOT_REQ           = (1 << 12), 
+		SPIKE_LIST_REQ      = (1 << 13), 
+		INITIAL_STATE_REQ   = (1 << 14), 
+		FINAL_STATE_REQ     = (1 << 15)
 	};
 };
 
@@ -87,8 +85,7 @@ struct InputArgs{
 	MexVector<int> InterestingSyns;
 	MexVector<float> V;
 	MexVector<float> U;
-	MexVector<float> Iin1;
-	MexVector<float> Iin2;
+	MexVector<float> Iin;
 	MexVector<float> WeightDeriv;
 
 	MexVector<uint32_t> GenState;
@@ -112,8 +109,7 @@ struct InputArgs{
 		InterestingSyns(),
 		V(),
 		U(),
-		Iin1(),
-		Iin2(),
+		Iin(),
 		WeightDeriv(),
 		GenState(),
 		Irand(),
@@ -136,7 +132,7 @@ struct InternalVars{
 	int DelayRange;
 	int CurrentQIndex;
 	const float I0;
-	const float CurrentDecayFactor1, CurrentDecayFactor2;
+	const float CurrentDecayFactor;
 	const float alpha;
 	const float StdDev;
 
@@ -149,8 +145,7 @@ struct InternalVars{
 	MexVector<int> &InterestingSyns;
 	MexVector<float> &V;
 	MexVector<float> &U;
-	atomicLongVect Iin1;
-	atomicLongVect Iin2;
+	atomicLongVect Iin;
 	MexVector<float> WeightDeriv;
 	BandLimGaussVect Irand;
 	MexMatrix<float> RandMat;
@@ -189,8 +184,7 @@ struct InternalVars{
 		InterestingSyns(IArgs.InterestingSyns),
 		V(IArgs.V),
 		U(IArgs.U),
-		Iin1(N),	// Iin is defined separately as an atomic vect.
-		Iin2(N),
+		Iin(N),	// Iin is defined separately as an atomic vect.
 		WeightDeriv(M),
 		Irand(),	// Irand defined separately.
 		RandMat(8192, N),
@@ -208,8 +202,7 @@ struct InternalVars{
 		NoOfms(IArgs.NoOfms),
 		DelayRange(IArgs.DelayRange),
 		I0(1.0f),
-		CurrentDecayFactor1(powf(9.0f / 10, 1.0f / onemsbyTstep)),
-		CurrentDecayFactor2(powf(9.0f / (10.0f), 1.0f / (4 * onemsbyTstep))),
+		CurrentDecayFactor(powf(9.0f / 10, 1.0f / onemsbyTstep)),
 		alpha(0.5),
 		StdDev(3.5)
 		{
@@ -242,32 +235,18 @@ struct InternalVars{
 			return;
 		}
 
-		// Setting Initial Conditions for INTERNAL CURRENT 1
-		if (IArgs.Iin1.size() == N){
+		// Setting Initial Conditions for INTERNAL CURRENT
+		if (IArgs.Iin.size() == N){
 			for (int j = 0; j < N; ++j){
-				Iin1[j] = (long long int)(IArgs.Iin1[j] * (1i64 << 32));
+				Iin[j] = (long long int)(IArgs.Iin[j] * (1i64 << 32));
 			}
 		}
-		else if (IArgs.Iin1.size()){
+		else if (IArgs.Iin.size()){
 			// GIVE ERROR MESSAGE HERE
 			return;
 		}
 		//else{
-		//	Iin1 is already initialized to zero by tbb::zero_allocator<long long>
-		//}
-
-		// Setting Initial Conditions for INTERNAL CURRENT 2
-		if (IArgs.Iin2.size() == N){
-			for (int j = 0; j < N; ++j){
-				Iin2[j] = (long long int)(IArgs.Iin2[j] * (1i64 << 32));
-			}
-		}
-		else if (IArgs.Iin2.size()){
-			// GIVE ERROR MESSAGE HERE
-			return;
-		}
-		//else{
-		//	Iin2 is already initialized to zero by tbb::zero_allocator<long long>
+		//	Iin is already initialized to zero by tbb::zero_allocator<long long>
 		//}
 
 		// Setting Initial Conditions for Weight Derivative
@@ -346,14 +325,12 @@ private:
 
 struct OutputVarsStruct{
 	MexMatrix<float> WeightOut;
-	MexMatrix<float> Iin;
 	MexMatrix<float> Itot;
 	MexVector<MexVector<int> > SpikeList;
 
 	OutputVarsStruct() :
 		WeightOut(),
 		Itot(),
-		Iin(),
 		SpikeList(){}
 
 	void initialize(const InternalVars &);
@@ -363,8 +340,7 @@ struct StateVarsOutStruct{
 	MexMatrix<float> WeightOut;
 	MexMatrix<float> VOut;
 	MexMatrix<float> UOut;
-	MexMatrix<float> Iin1Out;
-	MexMatrix<float> Iin2Out;
+	MexMatrix<float> IinOut;
 	MexMatrix<float> WeightDerivOut;
 	MexMatrix<uint32_t> GenStateOut;
 	MexMatrix<float> IrandOut;
@@ -379,8 +355,7 @@ struct StateVarsOutStruct{
 		WeightOut(),
 		VOut(),
 		UOut(),
-		Iin1Out(),
-		Iin2Out(),
+		IinOut(),
 		WeightDerivOut(),
 		GenStateOut(),
 		IrandOut(),
@@ -396,8 +371,7 @@ struct SingleStateStruct{
 	MexVector<float> Weight;
 	MexVector<float> V;
 	MexVector<float> U;
-	MexVector<float> Iin1;
-	MexVector<float> Iin2;
+	MexVector<float> Iin;
 	MexVector<float> WeightDeriv;
 	MexVector<uint32_t> GenState;
 	MexVector<float> Irand;
@@ -412,8 +386,7 @@ struct SingleStateStruct{
 		Weight(),
 		V(),
 		U(),
-		Iin1(),
-		Iin2(),
+		Iin(),
 		WeightDeriv(),
 		GenState(),
 		Irand(),
