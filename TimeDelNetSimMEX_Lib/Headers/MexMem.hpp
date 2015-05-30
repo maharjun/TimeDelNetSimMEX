@@ -96,7 +96,7 @@ public:
 	}
 	inline explicit MexVector(size_t Size, const T &Elem){
 		if (Size > 0){
-			int NumExtraBytes = Size*sizeof(T);
+			size_t NumExtraBytes = Size*sizeof(T);
 			if (MemCounter::MemUsageCount + NumExtraBytes <= MemCounter::MemUsageLimit){
 				MemCounter::MemUsageCount += NumExtraBytes;
 				Array_Beg = reinterpret_cast<T*>(mxCalloc(Size, sizeof(T)));
@@ -252,7 +252,7 @@ public:
 			size_t CurrSize = this->size();
 			CurrCapacity = CurrCapacity ? CurrCapacity : 4;
 			while (CurrCapacity <= CurrSize + Increment){
-				CurrCapacity += (CurrCapacity >> 1);
+				CurrCapacity += ((CurrCapacity >> 1) + 1);
 			}
 			reserve(CurrCapacity);
 		}

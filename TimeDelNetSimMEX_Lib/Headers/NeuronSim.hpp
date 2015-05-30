@@ -8,6 +8,8 @@
 #include <xutility>
 #include <stdint.h>
 #include <vector>
+#include <cmath>
+#include <iostream>
 #include <tbb\atomic.h>
 #include <tbb\parallel_for.h>
 
@@ -119,26 +121,32 @@ struct InputArgs{
 };
 
 struct InternalVars{
-	int N;
-	int M;
-	int i;		//This is the most important loop index that is definitely a state variable
+	size_t N;
+	size_t NExc;
+	size_t M;
+	size_t MExc;
+	size_t i;		//This is the most important loop index that is definitely a state variable
 				// and plays a crucial role in deciding the index into which the output must be performed
-	int Time;	// must be initialized befor beta
-	int beta;	// This is another parameter that plays a rucial role when storing sparsely.
+	size_t Time;	// must be initialized befor beta
+	size_t beta;	// This is another parameter that plays a rucial role when storing sparsely.
 				// It is the first value of i for which the sparse storage must be done.
 				// goes from 1 to StorageStepSize * onemsbyTstep
-	int onemsbyTstep;
-	int NoOfms;
-	int DelayRange;
-	int CurrentQIndex;
+	size_t onemsbyTstep;
+	size_t NoOfms;
+	size_t DelayRange;
+	size_t CurrentQIndex;
 	const float I0;
 	const float CurrentDecayFactor;
+	const float STDPDecayFactor;
+	const int STDPMaxWinLen;
+	const float MaxSynWeight;
+	const float W0;
 	const float alpha;
 	const float StdDev;
 
-	int OutputControl;
-	int StorageStepSize;
-	const int StatusDisplayInterval;
+	size_t OutputControl;
+	size_t StorageStepSize;
+	const size_t StatusDisplayInterval;
 
 	MexVector<Synapse> &Network;
 	MexVector<Neuron> &Neurons;
@@ -146,11 +154,12 @@ struct InternalVars{
 	MexVector<float> &V;
 	MexVector<float> &U;
 	atomicLongVect Iin;
-	MexVector<float> WeightDeriv;
+	MexVector<float> &WeightDeriv;
 	BandLimGaussVect Irand;
 	MexMatrix<float> RandMat;
 	MexMatrix<uint32_t> GenMat;
 	MexVector<float> Iext;
+
 	MexVector<MexVector<int> > &SpikeQueue;
 	MexVector<int> &LSTNeuron;
 	MexVector<int> &LSTSyn;
@@ -169,9 +178,13 @@ struct InternalVars{
 														// indices one greater than index of the last synapse in 
 														// AuxArray with NEnd = j+1
 
+	MexVector<float> ExpVect;
+
 	InternalVars(InputArgs &IArgs) :
 		N(IArgs.Neurons.size()),
+		NExc(0),
 		M(IArgs.Network.size()),
+		MExc(0),
 		i(0),
 		Time(IArgs.Time),
 		// beta defined conditionally below
@@ -185,7 +198,7 @@ struct InternalVars{
 		V(IArgs.V),
 		U(IArgs.U),
 		Iin(N),	// Iin is defined separately as an atomic vect.
-		WeightDeriv(M),
+		WeightDeriv(IArgs.WeightDeriv),
 		Irand(),	// Irand defined separately.
 		RandMat(8192, N),
 		GenMat(8192, 4),
@@ -198,15 +211,19 @@ struct InternalVars{
 		PreSynNeuronSectionEnd(N, -1),
 		PostSynNeuronSectionBeg(N, -1),
 		PostSynNeuronSectionEnd(N, -1),
+		ExpVect(STDPMaxWinLen),
 		onemsbyTstep(IArgs.onemsbyTstep),
 		NoOfms(IArgs.NoOfms),
 		DelayRange(IArgs.DelayRange),
 		I0(1.0f),
-		CurrentDecayFactor(powf(9.0f / 10, 1.0f / onemsbyTstep)),
+		STDPMaxWinLen(size_t(onemsbyTstep*(log(0.01) / log(pow((double)STDPDecayFactor, (double)onemsbyTstep))))),
+		CurrentDecayFactor(powf(1.0f / 2, 1.0f / onemsbyTstep)),
+		STDPDecayFactor(powf(0.95f, 1.0f / onemsbyTstep)),
+		W0(0.1f),
+		MaxSynWeight(10.0),
 		alpha(0.5),
-		StdDev(3.5)
-		{
-		
+		StdDev(3.5){
+
 		// Setting value of beta
 		if (StorageStepSize)
 			beta = (onemsbyTstep * StorageStepSize) - Time % (onemsbyTstep * StorageStepSize);
@@ -251,12 +268,9 @@ struct InternalVars{
 
 		// Setting Initial Conditions for Weight Derivative
 		if (IArgs.WeightDeriv.istrulyempty()){
-			for (auto WeightDerivElem : WeightDeriv) WeightDerivElem = 0;
+			WeightDeriv.resize(M, 0);
 		}
-		else if (IArgs.WeightDeriv.size() == M){
-			WeightDeriv = IArgs.WeightDeriv;
-		}
-		else{
+		else if (IArgs.WeightDeriv.size() != M){
 			// Return Exception
 			return;
 		}

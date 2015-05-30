@@ -43,10 +43,15 @@ void CountingSort(int N, MexVector<Synapse> &Network, MexVector<size_t> &indirec
 
 void CurrentUpdate::operator () (const tbb::blocked_range<int*> &BlockedRange) const{
 	const float &I0 = IntVars.I0;
-	auto &Network           = IntVars.Network;
-	auto &Iin              = IntVars.Iin;
-	auto &LastSpikedTimeSyn = IntVars.LSTSyn;
-	auto &time              = IntVars.Time;
+	auto &Network              = IntVars.Network;
+	auto &Iin                  = IntVars.Iin;
+	auto &LastSpikedTimeSyn    = IntVars.LSTSyn;
+	auto &LastSpikedTimeNeuron = IntVars.LSTNeuron;
+	auto &WeightDeriv          = IntVars.WeightDeriv;
+	auto &time                 = IntVars.Time;
+	auto &ExpVect              = IntVars.ExpVect;
+
+	auto &STDPMaxWinLen        = IntVars.STDPMaxWinLen;
 
 	int *begin = BlockedRange.begin();
 	int *end = BlockedRange.end();
@@ -59,7 +64,11 @@ void CurrentUpdate::operator () (const tbb::blocked_range<int*> &BlockedRange) c
 		AddedCurrent.m128_u32[0] += (32 << 23);
 
 		Iin[CurrentSynapse.NEnd - 1].fetch_and_add((long long)AddedCurrent.m128_f32[0]);
+
 		LastSpikedTimeSyn[CurrentSynapseInd] = time;
+		size_t SpikeTimeDiffCurr = time - LastSpikedTimeNeuron[CurrentSynapse.NEnd];
+		WeightDeriv[CurrentSynapseInd] -= ((SpikeTimeDiffCurr < STDPMaxWinLen) ? 1.2*ExpVect[SpikeTimeDiffCurr] : 0);
+		
 	}
 }
 
@@ -74,14 +83,24 @@ void NeuronSimulate::operator() (tbb::blocked_range<int> &Range) const{
 	auto &Iin = IntVars.Iin;
 	auto &Iext = IntVars.Iext;
 	auto &RandMat = IntVars.RandMat;
+	auto &WeightDeriv = IntVars.WeightDeriv;
 
 	auto &PreSynNeuronSectionBeg = IntVars.PreSynNeuronSectionBeg;
 	auto &PreSynNeuronSectionEnd = IntVars.PreSynNeuronSectionEnd;
+	auto &PostSynNeuronSectionBeg = IntVars.PostSynNeuronSectionBeg;
+	auto &PostSynNeuronSectionEnd = IntVars.PostSynNeuronSectionEnd;
+
+	auto &ExpVect = IntVars.ExpVect;
+
+	auto &AuxArray = IntVars.AuxArray;
 
 	auto &LastSpikedTimeNeuron = IntVars.LSTNeuron;
+	auto &LastSpikedTimeSynapse = IntVars.LSTSyn;
+
 	auto &StdDev = IntVars.StdDev;
 	auto &onemsbyTstep = IntVars.onemsbyTstep;
 	auto &time = IntVars.Time;
+	auto &STDPMaxWinLen = IntVars.STDPMaxWinLen;
 	auto k = (IntVars.i - 1) % 8192;
 
 	int QueueSize = onemsbyTstep*IntVars.DelayRange;
@@ -107,6 +126,16 @@ void NeuronSimulate::operator() (tbb::blocked_range<int> &Range) const{
 				//NSpikesGenminProc += ((PreSynNeuronSectionBeg[j] >= 0) ? PreSynNeuronSectionEnd[j] - PreSynNeuronSectionBeg[j] : 0);
 				LastSpikedTimeNeuron[j] = time;
 				//Space to implement any causal Learning Rule
+				MexVector<size_t>::iterator kbegin = AuxArray.begin() + PostSynNeuronSectionBeg[j];
+				MexVector<size_t>::iterator kend   = AuxArray.begin() + PostSynNeuronSectionEnd[j];
+				if (kbegin != kend)
+				for (MexVector<size_t>::iterator k = kbegin; k < kend; ++k){
+					size_t CurrSynIndex = *k;
+					MexVector<Synapse>::iterator CurrSynPtr = Network.begin() + CurrSynIndex;
+					size_t SpikeTimeDiffCurr = time - LastSpikedTimeSynapse[CurrSynIndex];
+					
+					WeightDeriv[CurrSynIndex] += ((SpikeTimeDiffCurr < STDPMaxWinLen) ? ExpVect[SpikeTimeDiffCurr] : 0);
+				}
 			}
 		}
 	}
@@ -531,30 +560,33 @@ void SimulateParallel(
 	InternalVars IntVars(InputArguments);
 
 	// Aliasing of Data members in IntVar
-	MexVector<Synapse>			&Network				= IntVars.Network;
-	MexVector<Neuron>			&Neurons				= IntVars.Neurons;
-	MexVector<float>			&Vnow					= IntVars.V;
-	MexVector<float>			&Unow					= IntVars.U;
-	MexVector<int>				&InterestingSyns		= IntVars.InterestingSyns;
-	atomicLongVect				&Iin					= IntVars.Iin;
-	BandLimGaussVect			&Irand					= IntVars.Irand;
-	MexMatrix<float>			&RandMat				= IntVars.RandMat;
-	MexMatrix<uint32_t>			&GenMat					= IntVars.GenMat;
-	MexVector<float>			&Iext					= IntVars.Iext;
-	MexVector<MexVector<int> >	&SpikeQueue				= IntVars.SpikeQueue;
-	MexVector<int>				&LastSpikedTimeNeuron	= IntVars.LSTNeuron;
-	MexVector<int>				&LastSpikedTimeSyn		= IntVars.LSTSyn;
+	MexVector<Synapse>			&Network              = IntVars.Network;
+	MexVector<Neuron>			&Neurons              = IntVars.Neurons;
+	MexVector<float>			&Vnow                 = IntVars.V;
+	MexVector<float>			&Unow                 = IntVars.U;
+	MexVector<int>				&InterestingSyns      = IntVars.InterestingSyns;
+	atomicLongVect              &Iin                  = IntVars.Iin;
+	MexVector<float>            &WeightDeriv          = IntVars.WeightDeriv;
+	BandLimGaussVect            &Irand                = IntVars.Irand;
+	MexMatrix<float>			&RandMat              = IntVars.RandMat;
+	MexMatrix<uint32_t>			&GenMat               = IntVars.GenMat;
+	MexVector<float>			&Iext                 = IntVars.Iext;
+	MexVector<MexVector<int> >	&SpikeQueue           = IntVars.SpikeQueue;
+	MexVector<int>				&LastSpikedTimeNeuron = IntVars.LSTNeuron;
+	MexVector<int>				&LastSpikedTimeSyn    = IntVars.LSTSyn;
 	
 
-	int &NoOfms				= IntVars.NoOfms;
-	const int &onemsbyTstep	= IntVars.onemsbyTstep;
-	int Tbeg				= IntVars.Time;				//Tbeg is just an initial constant, 
-	int &time				= IntVars.Time;				//time is the actual changing state variable
-	int &DelayRange			= IntVars.DelayRange;
-	int &CurrentQueueIndex	= IntVars.CurrentQIndex;
-	int &StorageStepSize	= IntVars.StorageStepSize;
-	int &OutputControl		= IntVars.OutputControl;
-	int &i					= IntVars.i;
+	size_t &NoOfms              = IntVars.NoOfms;
+	const size_t &onemsbyTstep  = IntVars.onemsbyTstep;
+	size_t Tbeg                 = IntVars.Time;				//Tbeg is just an initial constant, 
+	size_t &time                = IntVars.Time;				//time is the actual changing state variable
+	size_t &DelayRange          = IntVars.DelayRange;
+	size_t &CurrentQueueIndex   = IntVars.CurrentQIndex;
+	size_t &StorageStepSize     = IntVars.StorageStepSize;
+	size_t &OutputControl       = IntVars.OutputControl;
+	size_t &i                   = IntVars.i;
+	size_t &NExc                = IntVars.NExc;
+	size_t &MExc                = IntVars.MExc;
 
 	const float &I0			= IntVars.I0;	// Value of the current factor to be multd with weights (constant)
 	// calculate value of alpha for filtering
@@ -564,7 +596,7 @@ void SimulateParallel(
 	const float &StdDev		= IntVars.StdDev;
 	const float &CurrentDecayFactor	= IntVars.CurrentDecayFactor;	//Current Decay Factor in the current model (possibly input in future)
 
-	const int &StatusDisplayInterval = IntVars.StatusDisplayInterval;
+	const size_t &StatusDisplayInterval = IntVars.StatusDisplayInterval;
 
 	// other data members. probably derived from inputs or something
 	// I think should be a constant. (note that it is possible that 
@@ -592,7 +624,7 @@ void SimulateParallel(
 	
 	MexVector<size_t> &PostSynNeuronSectionEnd = IntVars.PostSynNeuronSectionEnd;
 	
-	
+	MexVector<float>  &ExpVect                 = IntVars.ExpVect;
 	//----------------------------------------------------------------------------------------------//
 	//--------------------------------- Initializing output Arrays ---------------------------------//
 	//----------------------------------------------------------------------------------------------//
@@ -611,7 +643,10 @@ void SimulateParallel(
 	// Sectioning the Network and AuxArray Arrays as according to 
 	// definition of respective variables above
 	PreSynNeuronSectionBeg[Network[0].NStart - 1] = 0;
+	PreSynNeuronSectionEnd[Network[0].NStart - 1] = 0;
 	PostSynNeuronSectionBeg[Network[AuxArray[0]].NEnd - 1] = 0;
+	PostSynNeuronSectionEnd[Network[AuxArray[0]].NEnd - 1] = 0;
+
 	PreSynNeuronSectionEnd[Network[M - 1].NStart - 1] = M;
 	PostSynNeuronSectionEnd[Network[AuxArray[M - 1]].NEnd - 1] = M;
 
@@ -625,6 +660,31 @@ void SimulateParallel(
 			PostSynNeuronSectionEnd[Network[AuxArray[j - 1]].NEnd - 1] = j;
 		}
 	}
+	for (int j = 1; j < N; ++j){
+		if (PreSynNeuronSectionBeg[j] == -1){
+			PreSynNeuronSectionBeg[j] = PreSynNeuronSectionEnd[j]
+				= PreSynNeuronSectionEnd[j - 1];
+		}
+		if (PostSynNeuronSectionBeg[j] == -1){
+			PostSynNeuronSectionBeg[j] = PostSynNeuronSectionEnd[j]
+				= PostSynNeuronSectionEnd[j - 1];
+		}
+	}
+
+	float Val = IntVars.W0;
+	for (int j = 0 ; j < IntVars.STDPMaxWinLen; ++j){
+		ExpVect[j] = Val;
+		Val *= IntVars.STDPDecayFactor;
+	}
+
+	NExc = 0;
+	for (int j = 0; Neurons[j].a == Neurons[0].a; ++j, ++NExc);
+	MExc = PreSynNeuronSectionEnd.operator[](NExc - 1);
+
+	// Here I assume that the first neuron is always excitatory
+	// and all excitatory neurons are stored contiguously starting 
+	// from the first neuron, and that excitatory and inhibitory
+	// neurons differe in their parameter a (which is tru in izhikevich case)
 
 	// The Structure of iteration below is given below
 	/*
@@ -680,8 +740,6 @@ void SimulateParallel(
 		InputArgs::IExtFunc(time*0.001f / onemsbyTstep, Iext);
 		IExtGenTimeEnd = std::chrono::system_clock::now();
 		IExtGenTime += std::chrono::duration_cast<std::chrono::microseconds>(IExtGenTimeEnd - IExtGenTimeBeg).count();
-		
-		
 
 		// This iteration applies time update equation for internal current
 		// in this case, it is just an exponential attenuation
@@ -738,6 +796,15 @@ void SimulateParallel(
 		SpikeStoreTime += std::chrono::duration_cast<std::chrono::microseconds>(SpikeStoreTimeEnd - SpikeStoreTimeBeg).count();
 
 		CurrentQueueIndex = (CurrentQueueIndex + 1) % QueueSize;
+
+		if (!(time % (1000 * onemsbyTstep))){
+			for (int j = 0; j < MExc; ++j){
+				Network[j].Weight += WeightDeriv[j] + 0.01;
+				Network[j].Weight = (Network[j].Weight > 0) ? Network[j].Weight : 0;
+				Network[j].Weight = (Network[j].Weight < IntVars.MaxSynWeight) ? Network[j].Weight : IntVars.MaxSynWeight;
+				WeightDeriv[j] *= 0.9;
+			}
+		}
 
 		OutputTimeBeg = std::chrono::system_clock::now();
 		IntVars.DoOutput(StateVarsOutput, PureOutputs);
