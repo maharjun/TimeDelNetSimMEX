@@ -13,6 +13,9 @@
 #include <tbb\atomic.h>
 #include <tbb\parallel_for.h>
 
+#include <emmintrin.h>
+#include <smmintrin.h>
+
 #define DEFAULT_STORAGE_STEP 500
 #define DEFAULT_STATUS_DISPLAY_STEP 400
 using namespace std;
@@ -148,6 +151,9 @@ struct InternalVars{
 	size_t StorageStepSize;
 	const size_t StatusDisplayInterval;
 
+	// Parameters that control C=Spike Storage Buffering
+	size_t CacheBuffering;
+
 	MexVector<Synapse> &Network;
 	MexVector<Neuron> &Neurons;
 	MexVector<int> &InterestingSyns;
@@ -178,7 +184,14 @@ struct InternalVars{
 														// indices one greater than index of the last synapse in 
 														// AuxArray with NEnd = j+1
 
+
 	MexVector<float> ExpVect;
+
+	// These vectors are instrumental in the Cache aligned 
+	// implementation of Spike Storage
+	MexVector<__m128i> BinningBuffer;	//each element is 16 bytes
+	MexVector<int> BufferInsertIndex;
+	MexVector<int> AddressOffset;
 
 	InternalVars(InputArgs &IArgs) :
 		N(IArgs.Neurons.size()),
@@ -212,9 +225,15 @@ struct InternalVars{
 		PostSynNeuronSectionBeg(N, -1),
 		PostSynNeuronSectionEnd(N, -1),
 		ExpVect(STDPMaxWinLen),
+
+		BinningBuffer(CacheBuffering*onemsbyTstep*DelayRange / 4),
+		BufferInsertIndex(onemsbyTstep*DelayRange, 0),
+		AddressOffset(onemsbyTstep*DelayRange, 0),
+
 		onemsbyTstep(IArgs.onemsbyTstep),
 		NoOfms(IArgs.NoOfms),
 		DelayRange(IArgs.DelayRange),
+		CacheBuffering(128),
 		I0(1.0f),
 		STDPMaxWinLen(size_t(onemsbyTstep*(log(0.01) / log(pow((double)STDPDecayFactor, (double)onemsbyTstep))))),
 		CurrentDecayFactor(powf(1.0f / 2, 1.0f / onemsbyTstep)),

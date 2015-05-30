@@ -468,10 +468,10 @@ void CachedSpikeStorage(InternalVars &IntVars){
 
 	const int nBins = IntVars.onemsbyTstep * IntVars.DelayRange;
 	const int CacheBuffering = 128;	// Each time a cache of size 64 will be pulled in 
-	static MexVector<__m128i> BinningBuffer(CacheBuffering*nBins/4);	//each element is 16 bytes
-	static MexVector<int> BufferInsertIndex(nBins, 0);
-	static MexVector<int> AddressOffset(nBins, 0);
-
+	
+	auto &BinningBuffer = IntVars.BinningBuffer;
+	auto &BufferInsertIndex = IntVars.BufferInsertIndex;
+	auto &AddressOffset = IntVars.AddressOffset;
 	
 	for (int j = 0; j < nBins; ++j){
 		AddressOffset[j] = (reinterpret_cast<size_t>(SpikeQueue[j].end()) & 0x0F) >> 2;
