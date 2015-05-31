@@ -22,22 +22,22 @@ using namespace std;
 
 struct OutOps{
 	enum {
-		V_REQ               = (1 << 0 ),
-		I_IN_REQ            = (1 << 1 ), 
-		I_RAND_REQ          = (1 << 2 ), 
-		WEIGHT_DERIV_REQ    = (1 << 3 ), 
-		GEN_STATE_REQ       = (1 << 4 ), 
-		TIME_REQ            = (1 << 5 ), 
-		U_REQ               = (1 << 6 ), 
-		WEIGHT_REQ          = (1 << 7 ), 
-		CURRENT_QINDS_REQ   = (1 << 8 ), 
-		SPIKE_QUEUE_REQ     = (1 << 9 ), 
-		LASTSPIKED_NEU_REQ  = (1 << 10), 
-		LASTSPIKED_SYN_REQ  = (1 << 11), 
-		I_TOT_REQ           = (1 << 12), 
-		SPIKE_LIST_REQ      = (1 << 13), 
-		INITIAL_STATE_REQ   = (1 << 14), 
-		FINAL_STATE_REQ     = (1 << 15)
+		CURRENT_QINDS_REQ   = (1 << 1 ), 
+		FINAL_STATE_REQ     = (1 << 2 ),
+		INITIAL_STATE_REQ   = (1 << 3 ), 
+		I_EXT_GEN_STATE_REQ = (1 << 4 ),
+		I_EXT_REQ           = (1 << 5 ),
+		I_IN_REQ            = (1 << 6 ), 
+		I_TOT_REQ           = (1 << 7 ), 
+		LASTSPIKED_NEU_REQ  = (1 << 8 ), 
+		LASTSPIKED_SYN_REQ  = (1 << 9 ), 
+		SPIKE_LIST_REQ      = (1 << 10), 
+		SPIKE_QUEUE_REQ     = (1 << 11), 
+		TIME_REQ            = (1 << 12), 
+		U_REQ               = (1 << 13), 
+		V_REQ               = (1 << 14),
+		WEIGHT_DERIV_REQ    = (1 << 15), 
+		WEIGHT_REQ          = (1 << 16), 
 	};
 };
 
@@ -84,18 +84,17 @@ struct CurrentAttenuate{
 
 
 struct InputArgs{
-	static void IExtFunc(float, MexVector<float> &);
+	static void IExtFunc(InternalVars &);
 	MexVector<Synapse> Network;
 	MexVector<Neuron> Neurons;
 	MexVector<int> InterestingSyns;
 	MexVector<float> V;
 	MexVector<float> U;
 	MexVector<float> Iin;
+	MexVector<float> Iext;
 	MexVector<float> WeightDeriv;
-
-	MexVector<uint32_t> GenState;
-	MexVector<float> Irand;
 	
+	MexVector<uint32_t> IExtGenState;
 	MexVector<MexVector<int> > SpikeQueue;
 	MexVector<int> LSTNeuron;
 	MexVector<int> LSTSyn;
@@ -115,9 +114,9 @@ struct InputArgs{
 		V(),
 		U(),
 		Iin(),
+		Iext(),
+		IExtGenState(),
 		WeightDeriv(),
-		GenState(),
-		Irand(),
 		SpikeQueue(),
 		LSTNeuron(),
 		LSTSyn() {}
@@ -140,6 +139,8 @@ struct InternalVars{
 	size_t CurrentQIndex;
 	const float I0;
 	const float CurrentDecayFactor;
+	const float IExtScaleFactor;
+	const float IExtDecayFactor;
 	const float STDPDecayFactor;
 	const int STDPMaxWinLen;
 	const float MaxSynWeight;
@@ -161,11 +162,9 @@ struct InternalVars{
 	MexVector<float> &U;
 	atomicLongVect Iin;
 	MexVector<float> &WeightDeriv;
-	BandLimGaussVect Irand;
-	MexMatrix<float> RandMat;
-	MexMatrix<uint32_t> GenMat;
-	MexVector<float> Iext;
+	MexVector<float> &Iext; // made reference cuz Iext is now a state variable
 
+	XorShiftPlus IExtGen;
 	MexVector<MexVector<int> > &SpikeQueue;
 	MexVector<int> &LSTNeuron;
 	MexVector<int> &LSTSyn;
@@ -194,54 +193,57 @@ struct InternalVars{
 	MexVector<int> AddressOffset;
 
 	InternalVars(InputArgs &IArgs) :
-		N(IArgs.Neurons.size()),
-		NExc(0),
-		M(IArgs.Network.size()),
-		MExc(0),
-		i(0),
-		Time(IArgs.Time),
+		N                     (IArgs.Neurons.size()),
+		NExc                  (0),
+		M                     (IArgs.Network.size()),
+		MExc                  (0),
+		i                     (0),
+		Time                  (IArgs.Time),
 		// beta defined conditionally below
-		CurrentQIndex(IArgs.CurrentQIndex),
-		OutputControl(IArgs.OutputControl),
-		StorageStepSize(IArgs.StorageStepSize),
-		StatusDisplayInterval(IArgs.StatusDisplayInterval),
-		Network(IArgs.Network),
-		Neurons(IArgs.Neurons),
-		InterestingSyns(IArgs.InterestingSyns),
-		V(IArgs.V),
-		U(IArgs.U),
-		Iin(N),	// Iin is defined separately as an atomic vect.
-		WeightDeriv(IArgs.WeightDeriv),
-		Irand(),	// Irand defined separately.
-		RandMat(8192, N),
-		GenMat(8192, 4),
-		Iext(N, 0.0f),
-		SpikeQueue(IArgs.SpikeQueue),
-		LSTNeuron(IArgs.LSTNeuron),
-		LSTSyn(IArgs.LSTSyn),
-		AuxArray(M),
-		PreSynNeuronSectionBeg(N, -1),
-		PreSynNeuronSectionEnd(N, -1),
-		PostSynNeuronSectionBeg(N, -1),
-		PostSynNeuronSectionEnd(N, -1),
-		ExpVect(STDPMaxWinLen),
+		CurrentQIndex         (IArgs.CurrentQIndex),
+		OutputControl         (IArgs.OutputControl),
+		StorageStepSize       (IArgs.StorageStepSize),
+		StatusDisplayInterval (IArgs.StatusDisplayInterval),
+		Network               (IArgs.Network),
+		Neurons               (IArgs.Neurons),
+		InterestingSyns       (IArgs.InterestingSyns),
+		V                     (IArgs.V),
+		U                     (IArgs.U),
+		Iin                   (N), 
+		// Iin is defined separately as an atomic vect.
+		WeightDeriv           (IArgs.WeightDeriv),
+		Iext                  (IArgs.Iext),
+		IExtGen               (),
+		SpikeQueue            (IArgs.SpikeQueue),
+		LSTNeuron             (IArgs.LSTNeuron),
+		LSTSyn                (IArgs.LSTSyn),
 
-		BinningBuffer(CacheBuffering*onemsbyTstep*DelayRange / 4),
-		BufferInsertIndex(onemsbyTstep*DelayRange, 0),
-		AddressOffset(onemsbyTstep*DelayRange, 0),
+		AuxArray                (M),
+		PreSynNeuronSectionBeg  (N, -1),
+		PreSynNeuronSectionEnd  (N, -1),
+		PostSynNeuronSectionBeg (N, -1),
+		PostSynNeuronSectionEnd (N, -1),
+		ExpVect                 (STDPMaxWinLen),
 
-		onemsbyTstep(IArgs.onemsbyTstep),
-		NoOfms(IArgs.NoOfms),
-		DelayRange(IArgs.DelayRange),
-		CacheBuffering(128),
-		I0(1.0f),
-		STDPMaxWinLen(size_t(onemsbyTstep*(log(0.01) / log(pow((double)STDPDecayFactor, (double)onemsbyTstep))))),
-		CurrentDecayFactor(powf(1.0f / 2, 1.0f / onemsbyTstep)),
-		STDPDecayFactor(powf(0.95f, 1.0f / onemsbyTstep)),
-		W0(0.1f),
-		MaxSynWeight(10.0),
-		alpha(0.5),
-		StdDev(3.5){
+		BinningBuffer     (CacheBuffering*onemsbyTstep*DelayRange / 4),
+		BufferInsertIndex (onemsbyTstep*DelayRange, 0),
+		AddressOffset     (onemsbyTstep*DelayRange, 0),
+
+		onemsbyTstep       (IArgs.onemsbyTstep),
+		NoOfms             (IArgs.NoOfms),
+		DelayRange         (IArgs.DelayRange),
+		CacheBuffering     (128),
+		I0                 (1.0f),
+		STDPMaxWinLen      (size_t(onemsbyTstep*(log(0.01) / log(pow((double)STDPDecayFactor, (double)onemsbyTstep))))),
+		CurrentDecayFactor (powf(1.0f / 2, 1.0f / onemsbyTstep)),
+		IExtDecayFactor    (1.0f / 2),
+		IExtScaleFactor    (2.1333f * 20),
+		STDPDecayFactor    (powf(0.95f, 1.0f / onemsbyTstep)),
+		W0                 (0.1f),
+		MaxSynWeight       (10.0),
+		alpha              (0.5), 
+		StdDev             (3.5)
+	{
 
 		// Setting value of beta
 		if (StorageStepSize)
@@ -285,6 +287,32 @@ struct InternalVars{
 		//	Iin is already initialized to zero by tbb::zero_allocator<long long>
 		//}
 
+		// Setting Initial Conditions for External Current (Iext)
+		if (Iext.istrulyempty()){
+			Iext.resize(N, 0.0f);
+		}
+		else if (Iext.size() != N){
+			// Show error
+			return;
+		}
+
+		// Setting Initial Conditions for IExt RNo Generator
+		if (IArgs.IExtGenState.size() == 1){ // single number seeding
+			IExtGen = XorShiftPlus(IArgs.IExtGenState[0]);
+		}
+		else if (IArgs.IExtGenState.size() == 4){ // previous state initializing
+			XorShiftPlus::StateStruct tempState;
+			tempState.ConvertVecttoState(IArgs.IExtGenState);
+			IExtGen = XorShiftPlus(tempState);
+		}
+		else if (!IArgs.IExtGenState.istrulyempty()){ // error
+			// Throw Exception here
+			return;
+		}
+		//else{
+		//	// This has already been acheived by the default constructor
+		//}
+
 		// Setting Initial Conditions for Weight Derivative
 		if (IArgs.WeightDeriv.istrulyempty()){
 			WeightDeriv.resize(M, 0);
@@ -294,31 +322,6 @@ struct InternalVars{
 			return;
 		}
 
-		// Setting up IRand and corresponding Random Generators.
-		XorShiftPlus Gen1;
-		XorShiftPlus::StateStruct Gen1State;
-		Gen1State.ConvertVecttoState(IArgs.GenState);
-		Gen1.setstate(Gen1State);
-
-		Irand.configure(Gen1, XorShiftPlus(), alpha);	// second generator is dummy.
-		if (IArgs.Irand.istrulyempty())
-			Irand.resize(N);
-		else if (IArgs.Irand.size() == N)
-			Irand.assign(IArgs.Irand);				// initializing Vector
-		else{
-			// GIVE ERROR MESSAGE HERE
-			return;
-		}
-		
-		int LoopLimit = (8192 <= onemsbyTstep*NoOfms) ? 8192 : onemsbyTstep*NoOfms + 1;
-		RandMat[0] = Irand;
-		Irand.generator1().getstate().ConvertStatetoVect(GenMat[0]);
-
-		for (int j = 1; j < LoopLimit; ++j){
-			Irand.generate();
-			RandMat[j] = Irand;
-			Irand.generator1().getstate().ConvertStatetoVect(GenMat[j]);
-		}
 		// Setting Initial Conditions of SpikeQueue
 		if (SpikeQueue.istrulyempty()){
 			SpikeQueue = MexVector<MexVector<int> >(onemsbyTstep * DelayRange, MexVector<int>());
@@ -374,11 +377,11 @@ struct StateVarsOutStruct{
 	MexMatrix<float> VOut;
 	MexMatrix<float> UOut;
 	MexMatrix<float> IinOut;
+	MexMatrix<float> IextOut;
 	MexMatrix<float> WeightDerivOut;
-	MexMatrix<uint32_t> GenStateOut;
-	MexMatrix<float> IrandOut;
-
+	MexMatrix<uint32_t> IExtGenStateOut;
 	MexVector<int> TimeOut;
+
 	MexVector<MexVector<MexVector<int> > > SpikeQueueOut;
 	MexVector<int> CurrentQIndexOut;
 	MexMatrix<int> LSTNeuronOut;
@@ -389,10 +392,10 @@ struct StateVarsOutStruct{
 		VOut(),
 		UOut(),
 		IinOut(),
+		IextOut(),
 		WeightDerivOut(),
-		GenStateOut(),
-		IrandOut(),
 		TimeOut(),
+		IExtGenStateOut(),
 		SpikeQueueOut(),
 		CurrentQIndexOut(),
 		LSTNeuronOut(),
@@ -405,10 +408,10 @@ struct SingleStateStruct{
 	MexVector<float> V;
 	MexVector<float> U;
 	MexVector<float> Iin;
+	MexVector<float> Iext;
 	MexVector<float> WeightDeriv;
-	MexVector<uint32_t> GenState;
-	MexVector<float> Irand;
 
+	MexVector<uint32_t> IExtGenState;
 	MexVector<MexVector<int > > SpikeQueue;
 	MexVector<int> LSTNeuron;
 	MexVector<int> LSTSyn;
@@ -420,9 +423,9 @@ struct SingleStateStruct{
 		V(),
 		U(),
 		Iin(),
+		Iext(),
 		WeightDeriv(),
-		GenState(),
-		Irand(),
+		IExtGenState(),
 		SpikeQueue(),
 		LSTNeuron(),
 		LSTSyn() {}

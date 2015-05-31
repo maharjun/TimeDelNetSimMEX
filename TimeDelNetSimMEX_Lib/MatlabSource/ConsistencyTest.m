@@ -1,5 +1,5 @@
-addpath('..\..\x64\Debug_Lib');
-rmpath('..\..\x64\Release_Lib');
+rmpath('..\..\x64\Debug_Lib');
+addpath('..\..\x64\Release_Lib');
 % addpath('export_fig-master');
 
 %%
@@ -52,16 +52,17 @@ InputStruct.Weight = single(Weights);
 InputStruct.Delay  = single(Delays);
 
 InputStruct.onemsbyTstep          = int32(4);
-InputStruct.NoOfms                = int32(200000);
+InputStruct.NoOfms                = int32(15*60*1000);
 InputStruct.DelayRange            = int32(RecurrentNetParams.DelayRange);
-InputStruct.StorageStepSize       = int32(4000);
+InputStruct.StorageStepSize       = int32(30000);
 InputStruct.OutputControl         = strjoin(OutputOptions);
 InputStruct.StatusDisplayInterval = int32(8000);
 
 InputStruct.OutputFile = 'SimResults1000DebugSparseLong.mat';
 save('../../TimeDelNetSimMEX_Exe/Data/InputData.mat', 'InputStruct');
 
-[OutputVarsSparse, StateVarsSparse, FinalStateSparse, InitStateSparse] = TimeDelNetSimMEX_Lib(InputStruct);
+% [OutputVarsSparse, StateVarsSparse, FinalStateSparse, InitStateSparse] = TimeDelNetSimMEX_Lib(InputStruct);
+clear functions;
 % Run the program after this
 
 %% Get Detailed vector from Initial State 
@@ -74,7 +75,6 @@ OutputOptions = { ...
 	'V', ...
 	'Iin', ...
 	'Itot', ...
-	'Irand', ...
 	'Initial', ...
 	'Final'
 	};
@@ -104,6 +104,7 @@ InputStruct.StatusDisplayInterval = int32(8000);
 InputStruct.OutputFile = 'SimResults1000DebugDetailedfromInit.mat';
 % save('../../TimeDelNetSimMEX_Exe/Data/InputData.mat', 'InputStruct');
 [OutputVarsDetailed1, StateVarsDetailed1, FinalStateDetailed1, InitStateDetailed1] = TimeDelNetSimMEX_Lib(InputStruct);
+clear functions;
 % Run the program
 %% Loading Relevent Data
 
@@ -183,18 +184,13 @@ max(abs(StateVarsDetailed.V(:,16000) - StateVarsSparse.V(:,3)))
 
 
 OutputOptions = { ...
-	'V', ...
-	'Iin', ...
-	'Itot' ...
- 	'Irand', ...
- 	'Initial', ...
- 	'Final'
+	'SpikeList'
 	};
 % Clearing InputStruct
 clear InputStruct;
 
 % Getting Midway state
-InputStruct = ConvertStatetoInitialCond(StateVarsSparse, 192*4000);
+InputStruct = ConvertStatetoInitialCond(StateVarsSparse, 14*60*4000);
 
 InputStruct.a = single(a);
 InputStruct.b = single(b);
@@ -207,16 +203,16 @@ InputStruct.NEnd   = int32(NEndVect);
 InputStruct.Delay  = single(Delays);
 
 InputStruct.onemsbyTstep          = int32(4);
-InputStruct.NoOfms                = int32(8000);
+InputStruct.NoOfms                = int32(30000);
 InputStruct.DelayRange            = int32(RecurrentNetParams.DelayRange);
 InputStruct.StorageStepSize       = int32(0);
 InputStruct.OutputControl         = strjoin(OutputOptions);
 InputStruct.StatusDisplayInterval = int32(8000);
 
-InputStruct.OutputFile = 'SimResults1000DebugDetailedfromInter.mat';
-save('../../TimeDelNetSimMEX_Exe/Data/InputData.mat', 'InputStruct');
+% InputStruct.OutputFile = 'SimResults1000DebugDetailedfromInter.mat';
+% save('../../TimeDelNetSimMEX_Exe/Data/InputData.mat', 'InputStruct');
 
-% [OutputVarsDetailed, StateVarsDetailed, FinalStateDetailed, InitStateDetailed] = TimeDelNetSimMEX_Lib(InputStruct);
+[OutputVarsDetailed, StateVarsDetailed, FinalStateDetailed, InitStateDetailed] = TimeDelNetSimMEX_Lib(InputStruct);
 clear functions;
 %% Loading Relevant Data
 load('../../TimeDelNetSimMEX_Exe/Data/SimResults1000DebugDetailedfromInter.mat');
