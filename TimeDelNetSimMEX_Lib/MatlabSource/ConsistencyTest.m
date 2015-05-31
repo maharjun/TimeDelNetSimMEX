@@ -1,5 +1,5 @@
-rmpath('..\..\x64\Debug_Lib');
-addpath('..\..\x64\Release_Lib');
+addpath('..\..\x64\Debug_Lib');
+rmpath('..\..\x64\Release_Lib');
 % addpath('export_fig-master');
 
 %%
@@ -61,7 +61,7 @@ InputStruct.StatusDisplayInterval = int32(8000);
 InputStruct.OutputFile = 'SimResults1000DebugSparseLong.mat';
 save('../../TimeDelNetSimMEX_Exe/Data/InputData.mat', 'InputStruct');
 
-% [OutputVars, StateVars, FinalState, InitState] = TimeDelNetSimMEX_Lib(InputStruct);
+[OutputVarsSparse, StateVarsSparse, FinalStateSparse, InitStateSparse] = TimeDelNetSimMEX_Lib(InputStruct);
 % Run the program after this
 
 %% Get Detailed vector from Initial State 
@@ -91,7 +91,7 @@ InputStruct.d = single(d);
 
 InputStruct.NStart = int32(NStartVect);
 InputStruct.NEnd   = int32(NEndVect);
-InputStruct.Weight = single(Weights);
+% InputStruct.Weight = single(Weights);
 InputStruct.Delay  = single(Delays);
 
 InputStruct.onemsbyTstep          = int32(4);
@@ -102,7 +102,8 @@ InputStruct.OutputControl         = strjoin(OutputOptions);
 InputStruct.StatusDisplayInterval = int32(8000);
 
 InputStruct.OutputFile = 'SimResults1000DebugDetailedfromInit.mat';
-save('../../TimeDelNetSimMEX_Exe/Data/InputData.mat', 'InputStruct');
+% save('../../TimeDelNetSimMEX_Exe/Data/InputData.mat', 'InputStruct');
+[OutputVarsDetailed1, StateVarsDetailed1, FinalStateDetailed1, InitStateDetailed1] = TimeDelNetSimMEX_Lib(InputStruct);
 % Run the program
 %% Loading Relevent Data
 

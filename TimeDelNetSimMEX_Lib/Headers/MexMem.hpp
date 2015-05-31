@@ -719,7 +719,7 @@ public:
 			}
 			else{
 				if (Array_Beg != NULL){
-					MemCounter::MemUsageCount -= this->Capacity;
+					MemCounter::MemUsageCount -= (this->Capacity)*sizeof(T);
 					mxFree(Array_Beg);
 				}
 				Array_Beg = NULL;
