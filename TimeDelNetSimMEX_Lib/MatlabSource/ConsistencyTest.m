@@ -20,7 +20,7 @@ RecurrentNetParams.MeanInhtoExc = -0.7*2000/N;
 RecurrentNetParams.Var          = 0.2;
 RecurrentNetParams.DelayRange   = 20;
 
-[A, Ninh, Weights, Delays] = RecurrentNetwork(RecurrentNetParams);
+[A, Ninh, Weights, Delays] = WorkingMemNet();
 
 a = 0.02*ones(N,1);
 b = 0.2*ones(N,1);
@@ -52,11 +52,12 @@ InputStruct.Weight = single(Weights);
 InputStruct.Delay  = single(Delays);
 
 InputStruct.onemsbyTstep          = int32(4);
-InputStruct.NoOfms                = int32(15*60*1000);
+InputStruct.NoOfms                = int32(30*60*1000);
 InputStruct.DelayRange            = int32(RecurrentNetParams.DelayRange);
-InputStruct.StorageStepSize       = int32(30000);
+InputStruct.StorageStepSize       = int32(60000);
 InputStruct.OutputControl         = strjoin(OutputOptions);
 InputStruct.StatusDisplayInterval = int32(8000);
+InputStruct.IExtGenState          = uint32(30);
 
 InputStruct.OutputFile = 'SimResults1000DebugSparseLong.mat';
 save('../../TimeDelNetSimMEX_Exe/Data/InputData.mat', 'InputStruct');
@@ -190,7 +191,7 @@ OutputOptions = { ...
 clear InputStruct;
 
 % Getting Midway state
-InputStruct = ConvertStatetoInitialCond(StateVarsSparse, 14*60*4000);
+InputStruct = ConvertStatetoInitialCond(StateVarsSparse, (6*60+30)*4000);
 
 InputStruct.a = single(a);
 InputStruct.b = single(b);

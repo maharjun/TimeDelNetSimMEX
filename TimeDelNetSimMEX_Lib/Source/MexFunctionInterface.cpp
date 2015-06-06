@@ -340,7 +340,17 @@ mxArray * putOutputToMatlabStruct(OutputVarsStruct &Output){
 	// Assigning Itot
 	mxSetField(ReturnPointer, 0, "Itot", assignmxArray(Output.Itot, mxSINGLE_CLASS));
 	// Assigning SpikeList
-	mxSetField(ReturnPointer, 0, "SpikeList", assignmxArray(Output.SpikeList, mxINT32_CLASS));
+	mxArray * SpikeListStructPtr;
+		const char *SpikeListFieldNames[] = {
+			"SpikeSynInds",
+			"TimeRchdStartInds"
+		};
+		SpikeListStructPtr = mxCreateStructArray(1, StructArraySize, 2, SpikeListFieldNames);
+		Output.SpikeList.SpikeSynInds.trim();
+		Output.SpikeList.TimeRchdStartInds.trim();
+		mxSetField(SpikeListStructPtr, 0, "SpikeSynInds"     , assignmxArray(Output.SpikeList.SpikeSynInds, mxINT32_CLASS));
+		mxSetField(SpikeListStructPtr, 0, "TimeRchdStartInds", assignmxArray(Output.SpikeList.TimeRchdStartInds, mxINT32_CLASS));
+	mxSetField(ReturnPointer, 0, "SpikeList", SpikeListStructPtr);
 
 	return ReturnPointer;
 }

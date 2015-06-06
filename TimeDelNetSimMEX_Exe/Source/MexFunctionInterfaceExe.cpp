@@ -7,6 +7,7 @@
 #include <chrono>
 #include <type_traits>
 #include <iostream>
+#include <Windows.h>
 #include "..\..\TimeDelNetSimMEX_Lib\Headers\NeuronSim.hpp"
 #include "..\..\TimeDelNetSimMEX_Lib\Headers\MexMem.hpp"
 #include "..\..\TimeDelNetSimMEX_Lib\Source\MexFunctionInterface.cpp"
@@ -42,6 +43,14 @@ int main(){
 	mxArrayPtr lhs[4] = { nullptr, nullptr, nullptr, nullptr }, 
 			   rhs[1] = { Input };
 
+	HANDLE XHandle = GetCurrentProcess();
+	ULONG_PTR ProcessAffMask, SystemAffMask;
+	
+	GetProcessAffinityMask(XHandle, &ProcessAffMask, &SystemAffMask);
+	cout << std::hex << ProcessAffMask << "  " << std::hex << SystemAffMask << endl;
+
+	system("pause");
+
 	OutputFilePtr = matOpen(OutputFilePath, "r");
 	while (OutputFilePtr){
 		char UserConfirmResp;
@@ -70,7 +79,6 @@ int main(){
 		return 0;
 	}
 	
-
 	OutputVars = lhs[0];
 	StateVars = lhs[1];
 	FinalState = lhs[2];

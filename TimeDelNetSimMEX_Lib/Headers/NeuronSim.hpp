@@ -235,10 +235,10 @@ struct InternalVars{
 		CacheBuffering     (128),
 		I0                 (1.0f),
 		STDPMaxWinLen      (size_t(onemsbyTstep*(log(0.01) / log(pow((double)STDPDecayFactor, (double)onemsbyTstep))))),
-		CurrentDecayFactor (powf(1.0f / 2, 1.0f / onemsbyTstep)),
-		IExtDecayFactor    (1.0f / 2),
-		IExtScaleFactor    (2.1333f * 20),
-		STDPDecayFactor    (powf(0.95f, 1.0f / onemsbyTstep)),
+		CurrentDecayFactor (powf(1.0f / 3.5, 1.0f / onemsbyTstep)),
+		IExtDecayFactor    (2.0f / 3),
+		IExtScaleFactor    (18),
+		STDPDecayFactor    (powf(0.7f, 1.0f / onemsbyTstep)),
 		W0                 (0.1f),
 		MaxSynWeight       (10.0),
 		alpha              (0.5), 
@@ -362,7 +362,11 @@ private:
 struct OutputVarsStruct{
 	MexMatrix<float> WeightOut;
 	MexMatrix<float> Itot;
-	MexVector<MexVector<int> > SpikeList;
+	struct SpikeListStruct{
+		MexVector<int> SpikeSynInds;
+		MexVector<int> TimeRchdStartInds;
+		SpikeListStruct() : SpikeSynInds(), TimeRchdStartInds(){}
+	} SpikeList;
 
 	OutputVarsStruct() :
 		WeightOut(),

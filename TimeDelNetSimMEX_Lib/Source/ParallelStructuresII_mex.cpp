@@ -164,11 +164,14 @@ void InputArgs::IExtFunc(InternalVars &IntVars)
 
 	// IExt Decay
 	for (int i = 0; i < N; ++i){
-		Iext[i] *= IExtDecayFactor;
+		if (Iext[i] < 0.1)
+			Iext[i] = 0;
+		else
+			Iext[i] *= IExtDecayFactor;
 	}
 	// Random Neuron Selection once every ms
 	
-	if (!(Time % onemsbyTstep)){
+	if (!(Time % onemsbyTstep) && Time < 500*1000*IntVars.onemsbyTstep){
 		int SelNeuronInd = (IExtGen() % N);
 		Iext[SelNeuronInd] += IExtScaleFactor;
 	}
@@ -255,10 +258,9 @@ void OutputVarsStruct::initialize(const InternalVars &IntVars){
 			this->WeightOut = MexMatrix<float>(TimeDimLen, IntVars.InterestingSyns.size());
 	if (OutputControl & OutOps::I_TOT_REQ)
 		this->Itot = MexMatrix<float>(TimeDimLen, N);
-	if ((OutputControl & OutOps::SPIKE_LIST_REQ) && !StorageStepSize)
-		// the size used below is to store all the spikes generated but not yet arrived
-		// also, spiek storage is always only done in non-sparse mode.
-		this->SpikeList = MexVector<MexVector<int >>(nSteps + IntVars.DelayRange*onemsbyTstep - 1, MexVector<int>());
+	if ((OutputControl & OutOps::SPIKE_LIST_REQ) && !StorageStepSize);
+		// The vector is initialized to size zero regardless. the If condition is 
+		// just kept for code conformity
 }
 void FinalStateStruct::initialize(const InternalVars &IntVars){
 	int OutputControl	= IntVars.OutputControl;
@@ -418,12 +420,20 @@ void InternalVars::DoFullOutput(StateVarsOutStruct &StateOut, OutputVarsStruct &
 
 		// Storing Spike List
 		if (OutputControl & OutOps::SPIKE_LIST_REQ){
-			OutVars.SpikeList[CurrentInsertPos] = SpikeQueue[CurrentQIndex];
+			OutVars.SpikeList.TimeRchdStartInds.push_back(OutVars.SpikeList.SpikeSynInds.size());
+			for (auto Spike : SpikeQueue[CurrentQIndex]){
+				OutVars.SpikeList.SpikeSynInds.push_back(Spike);
+			}
 			if (i == nSteps){
 				// Storing spikes which are generated but not gonna arrive next turn
 				for (int j = 1; j < DelayRange*onemsbyTstep; ++j){
-					OutVars.SpikeList[CurrentInsertPos + j] = SpikeQueue[(CurrentQIndex + j) % (DelayRange*onemsbyTstep)];
+					OutVars.SpikeList.TimeRchdStartInds.push_back(OutVars.SpikeList.SpikeSynInds.size());
+					for (auto Spike : SpikeQueue[CurrentQIndex]){
+						OutVars.SpikeList.SpikeSynInds.push_back(Spike);
+					}
 				}
+				OutVars.SpikeList.TimeRchdStartInds.push_back(OutVars.SpikeList.SpikeSynInds.size());
+				// Final push_back in order to be able to infer end.
 			}
 		}
 	}
@@ -784,7 +794,7 @@ void SimulateParallel(
 				Network[j].Weight += WeightDeriv[j] + 0.01;
 				Network[j].Weight = (Network[j].Weight > 0) ? Network[j].Weight : 0;
 				Network[j].Weight = (Network[j].Weight < IntVars.MaxSynWeight) ? Network[j].Weight : IntVars.MaxSynWeight;
-				WeightDeriv[j] *= 0.9;
+				WeightDeriv[j] = 0;
 			}
 		}
 
