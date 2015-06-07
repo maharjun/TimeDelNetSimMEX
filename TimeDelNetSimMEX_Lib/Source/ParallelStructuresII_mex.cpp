@@ -66,7 +66,7 @@ void CurrentUpdate::operator () (const tbb::blocked_range<int*> &BlockedRange) c
 		Iin[CurrentSynapse.NEnd - 1].fetch_and_add((long long)AddedCurrent.m128_f32[0]);
 
 		LastSpikedTimeSyn[CurrentSynapseInd] = time;
-		size_t SpikeTimeDiffCurr = time - LastSpikedTimeNeuron[CurrentSynapse.NEnd];
+		size_t SpikeTimeDiffCurr = time - LastSpikedTimeNeuron[CurrentSynapse.NEnd] - 1;
 		WeightDeriv[CurrentSynapseInd] -= ((SpikeTimeDiffCurr < STDPMaxWinLen) ? 1.2*ExpVect[SpikeTimeDiffCurr] : 0);
 		
 	}
@@ -121,7 +121,11 @@ void NeuronSimulate::operator() (tbb::blocked_range<int> &Range) const{
 
 			//Implementing Network Computation in case a Neuron has spiked in the current interval
 			if (Vnow[j] >= 30.0f){
-				Vnow[j] = 30.0f;
+				//Vnow[j] = 30.0f;
+				//Implementing Izhikevich resetting
+				Vnow[j] = Neurons[j].c;
+				Unow[j] += Neurons[j].d;
+
 				//NSpikesGenminProc += ((PreSynNeuronSectionBeg[j] >= 0) ? PreSynNeuronSectionEnd[j] - PreSynNeuronSectionBeg[j] : 0);
 				LastSpikedTimeNeuron[j] = time;
 				//Space to implement any causal Learning Rule
@@ -148,7 +152,7 @@ void CurrentAttenuate::operator() (tbb::blocked_range<int> &Range) const {
 	tbb::atomic<long long> *End1 = &Iin[Range.end()-1] + 1;\
 
 	for (tbb::atomic<long long> *i = Begin1; i < End1; ++i){
-		(*i) = (long long)(float(i->load()) * attenFactor);
+		(*i) = 0; //(long long)(float(i->load()) * attenFactor)
 	}
 }
 void InputArgs::IExtFunc(InternalVars &IntVars)
@@ -161,20 +165,18 @@ void InputArgs::IExtFunc(InternalVars &IntVars)
 	auto &IExtGen         = IntVars.IExtGen;
 	auto &IExtDecayFactor = IntVars.IExtDecayFactor;
 	auto &IExtScaleFactor = IntVars.IExtScaleFactor;
+	auto &CurrentGenNeuron = IntVars.CurrentGenNeuron;
 
-	// IExt Decay
-	for (int i = 0; i < N; ++i){
-		if (Iext[i] < 0.1)
-			Iext[i] = 0;
-		else
-			Iext[i] *= IExtDecayFactor;
+	// IExt Reset
+	for (auto &IExtElem : Iext){
+		IExtElem = 0;
 	}
-	// Random Neuron Selection once every ms
-	
-	if (!(Time % onemsbyTstep) && Time < 500*1000*IntVars.onemsbyTstep){
-		int SelNeuronInd = (IExtGen() % N);
-		Iext[SelNeuronInd] += IExtScaleFactor;
-	}
+	//Iext[CurrentGenNeuron] = 0;
+
+	// Random Neuron Selection once every time step (in this case ms)
+
+	CurrentGenNeuron = (IExtGen() % N);
+	Iext[CurrentGenNeuron] += IExtScaleFactor;
 }
 
 void StateVarsOutStruct::initialize(const InternalVars &IntVars) {
@@ -252,7 +254,7 @@ void OutputVarsStruct::initialize(const InternalVars &IntVars){
 	else{
 		TimeDimLen = nSteps;
 	}
-
+	IExtNeuron = MexVector<int>(TimeDimLen);
 	if (OutputControl & OutOps::WEIGHT_REQ)
 		if (IntVars.InterestingSyns.size())
 			this->WeightOut = MexMatrix<float>(TimeDimLen, IntVars.InterestingSyns.size());
@@ -361,6 +363,9 @@ void InternalVars::DoSparseOutput(StateVarsOutStruct &StateOut, OutputVarsStruct
 			OutVars.Itot(CurrentInsertPos, j) = Iext[j] + (float)(Iin[j]) / (1i64 << 32);
 	}
 
+	// Storing IExtNeuron
+	OutVars.IExtNeuron[CurrentInsertPos] = CurrentGenNeuron + 1; // +1 for C++ to MATLAB
+
 }
 void InternalVars::DoFullOutput(StateVarsOutStruct &StateOut, OutputVarsStruct &OutVars){
 	if (!StorageStepSize){
@@ -417,6 +422,9 @@ void InternalVars::DoFullOutput(StateVarsOutStruct &StateOut, OutputVarsStruct &
 			for (int j = 0; j < N; ++j)
 				OutVars.Itot(CurrentInsertPos, j) = Iext[j] + (float)(Iin[j]) / (1i64 << 32);
 		}
+
+		// Storing IExtNeuron
+		OutVars.IExtNeuron[CurrentInsertPos] = CurrentGenNeuron + 1; // +1 for C++ to MATLAB
 
 		// Storing Spike List
 		if (OutputControl & OutOps::SPIKE_LIST_REQ){
@@ -794,7 +802,7 @@ void SimulateParallel(
 				Network[j].Weight += WeightDeriv[j] + 0.01;
 				Network[j].Weight = (Network[j].Weight > 0) ? Network[j].Weight : 0;
 				Network[j].Weight = (Network[j].Weight < IntVars.MaxSynWeight) ? Network[j].Weight : IntVars.MaxSynWeight;
-				WeightDeriv[j] = 0;
+				WeightDeriv[j] *= 0.9;
 			}
 		}
 

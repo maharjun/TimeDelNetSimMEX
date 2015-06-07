@@ -325,6 +325,7 @@ mxArray * putOutputToMatlabStruct(OutputVarsStruct &Output){
 	const char *FieldNames[] = { 
 		"WeightOut",
 		"Itot",
+		"IExtNeuron",
 		"SpikeList",
 		nullptr
 	};
@@ -339,6 +340,9 @@ mxArray * putOutputToMatlabStruct(OutputVarsStruct &Output){
 	mxSetField(ReturnPointer, 0, "WeightOut", assignmxArray(Output.WeightOut, mxSINGLE_CLASS));
 	// Assigning Itot
 	mxSetField(ReturnPointer, 0, "Itot", assignmxArray(Output.Itot, mxSINGLE_CLASS));
+	// Assigning IExtNeuron
+	mxSetField(ReturnPointer, 0, "IExtNeuron", assignmxArray(Output.IExtNeuron, mxINT32_CLASS));
+
 	// Assigning SpikeList
 	mxArray * SpikeListStructPtr;
 		const char *SpikeListFieldNames[] = {

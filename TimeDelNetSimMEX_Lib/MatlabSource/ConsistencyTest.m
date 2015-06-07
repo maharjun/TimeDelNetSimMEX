@@ -3,6 +3,7 @@ addpath('..\..\x64\Release_Lib');
 % addpath('export_fig-master');
 
 %%
+rng('default');
 rng(25);
 N = 1000;
 E = 0.8;
@@ -51,12 +52,15 @@ InputStruct.NEnd   = int32(NEndVect);
 InputStruct.Weight = single(Weights);
 InputStruct.Delay  = single(Delays);
 
-InputStruct.onemsbyTstep          = int32(4);
-InputStruct.NoOfms                = int32(30*60*1000);
+InputStruct.V = single(-65*ones(N,1));
+InputStruct.U = single(0.2*InputStruct.V);
+
+InputStruct.onemsbyTstep          = int32(1);
+InputStruct.NoOfms                = int32(2*60*1000);
 InputStruct.DelayRange            = int32(RecurrentNetParams.DelayRange);
-InputStruct.StorageStepSize       = int32(60000);
+InputStruct.StorageStepSize       = int32(10000);
 InputStruct.OutputControl         = strjoin(OutputOptions);
-InputStruct.StatusDisplayInterval = int32(8000);
+InputStruct.StatusDisplayInterval = int32(2000);
 InputStruct.IExtGenState          = uint32(30);
 
 InputStruct.OutputFile = 'SimResults1000DebugSparseLong.mat';
@@ -185,13 +189,18 @@ max(abs(StateVarsDetailed.V(:,16000) - StateVarsSparse.V(:,3)))
 
 
 OutputOptions = { ...
-	'SpikeList'
+	'SpikeList', ...
+	'Final'%, ...
+%  	'Itot', ...
+% 	'V', ...
+% 	'U'
+% 	'WeightDeriv'
 	};
 % Clearing InputStruct
 clear InputStruct;
 
 % Getting Midway state
-InputStruct = ConvertStatetoInitialCond(StateVarsSparse, (6*60+30)*4000);
+InputStruct = ConvertStatetoInitialCond(StateVarsSparse, (1*60 + 20)*1000);
 
 InputStruct.a = single(a);
 InputStruct.b = single(b);
@@ -203,12 +212,12 @@ InputStruct.NEnd   = int32(NEndVect);
 % InputStruct.Weight = single(Weights);
 InputStruct.Delay  = single(Delays);
 
-InputStruct.onemsbyTstep          = int32(4);
-InputStruct.NoOfms                = int32(30000);
+InputStruct.onemsbyTstep          = int32(1);
+InputStruct.NoOfms                = int32(10000);
 InputStruct.DelayRange            = int32(RecurrentNetParams.DelayRange);
 InputStruct.StorageStepSize       = int32(0);
 InputStruct.OutputControl         = strjoin(OutputOptions);
-InputStruct.StatusDisplayInterval = int32(8000);
+InputStruct.StatusDisplayInterval = int32(2000);
 
 % InputStruct.OutputFile = 'SimResults1000DebugDetailedfromInter.mat';
 % save('../../TimeDelNetSimMEX_Exe/Data/InputData.mat', 'InputStruct');
