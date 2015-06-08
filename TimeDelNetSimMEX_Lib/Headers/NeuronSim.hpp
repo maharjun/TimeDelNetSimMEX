@@ -236,7 +236,7 @@ struct InternalVars{
 		DelayRange         (IArgs.DelayRange),
 		CacheBuffering     (128),
 		I0                 (1.0f),
-		STDPMaxWinLen      (size_t(onemsbyTstep*(log(0.01) / log(pow((double)STDPDecayFactor, (double)onemsbyTstep))))),
+		STDPMaxWinLen      (size_t(onemsbyTstep*(log(0.0001) / log(pow((double)STDPDecayFactor, (double)onemsbyTstep))))),
 		CurrentDecayFactor (powf(1.0f / 3.5, 1.0f / onemsbyTstep)),
 		IExtDecayFactor    (2.0f / 3),
 		IExtScaleFactor    (20),

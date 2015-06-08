@@ -66,9 +66,11 @@ void CurrentUpdate::operator () (const tbb::blocked_range<int*> &BlockedRange) c
 		Iin[CurrentSynapse.NEnd - 1].fetch_and_add((long long)AddedCurrent.m128_f32[0]);
 
 		LastSpikedTimeSyn[CurrentSynapseInd] = time;
-		size_t SpikeTimeDiffCurr = time - LastSpikedTimeNeuron[CurrentSynapse.NEnd] - 1;
-		WeightDeriv[CurrentSynapseInd] -= ((SpikeTimeDiffCurr < STDPMaxWinLen) ? 1.2*ExpVect[SpikeTimeDiffCurr] : 0);
-		
+		int NeuronSpikeTime = LastSpikedTimeNeuron[CurrentSynapse.NEnd - 1];
+		if (NeuronSpikeTime >= 0){
+			size_t SpikeTimeDiffCurr = time - NeuronSpikeTime - 1;
+			WeightDeriv[CurrentSynapseInd] -= ((SpikeTimeDiffCurr < STDPMaxWinLen) ? 1.2f*ExpVect[SpikeTimeDiffCurr] : 0);
+		}
 	}
 }
 
@@ -113,10 +115,15 @@ void NeuronSimulate::operator() (tbb::blocked_range<int> &Range) const{
 		}
 		else{
 			//Implementing Izhikevich differential equation
-			float Vnew, Unew;
-			Vnew = Vnow[j] + (Vnow[j] * (0.04f*Vnow[j] + 5.0f) + 140.0f - Unow[j] + (float)(Iin[j]) / (1i64 << 32) + Iext[j]) / onemsbyTstep;
-			Unew = Unow[j] + (Neurons[j].a*(Neurons[j].b*Vnow[j] - Unow[j])) / onemsbyTstep;
-			Vnow[j] = (Vnew > -100)? Vnew: -100;
+			float Vnew, Vtemp, Unew;
+			Vnew = Vnow[j] + 0.5f*(Vnow[j] * (0.04f*Vnow[j] + 5.0f) + 140.0f - Unow[j] + (float)(Iin[j]) / (1i64 << 32) + Iext[j]) / onemsbyTstep;
+			Vnew = (Vnew > -100) ? Vnew : -100;
+			Vnew = Vnew + 0.5f*(Vnew * (0.04f*Vnew + 5.0f) + 140.0f - Unow[j] + (float)(Iin[j]) / (1i64 << 32) + Iext[j]) / onemsbyTstep;
+			Vnew = (Vnew > -100) ? Vnew : -100;
+
+			Unew = Unow[j] + (Neurons[j].a*(Neurons[j].b*Vnew - Unow[j])) / onemsbyTstep;
+			
+			Vnow[j] = (Vnew > -100) ? Vnew : -100;
 			Unow[j] = Unew;
 
 			//Implementing Network Computation in case a Neuron has spiked in the current interval
@@ -135,9 +142,11 @@ void NeuronSimulate::operator() (tbb::blocked_range<int> &Range) const{
 				for (MexVector<size_t>::iterator k = kbegin; k < kend; ++k){
 					size_t CurrSynIndex = *k;
 					MexVector<Synapse>::iterator CurrSynPtr = Network.begin() + CurrSynIndex;
-					size_t SpikeTimeDiffCurr = time - LastSpikedTimeSynapse[CurrSynIndex];
-					
-					WeightDeriv[CurrSynIndex] += ((SpikeTimeDiffCurr < STDPMaxWinLen) ? ExpVect[SpikeTimeDiffCurr] : 0);
+					int SynapseSpikeTime = LastSpikedTimeSynapse[CurrSynIndex];
+					if (SynapseSpikeTime >= 0){
+						size_t SpikeTimeDiffCurr = time - SynapseSpikeTime;
+						WeightDeriv[CurrSynIndex] += ((SpikeTimeDiffCurr < STDPMaxWinLen) ? ExpVect[SpikeTimeDiffCurr] : 0);
+					}
 				}
 			}
 		}
@@ -174,7 +183,6 @@ void InputArgs::IExtFunc(InternalVars &IntVars)
 	//Iext[CurrentGenNeuron] = 0;
 
 	// Random Neuron Selection once every time step (in this case ms)
-
 	CurrentGenNeuron = (IExtGen() % N);
 	Iext[CurrentGenNeuron] += IExtScaleFactor;
 }
@@ -436,7 +444,7 @@ void InternalVars::DoFullOutput(StateVarsOutStruct &StateOut, OutputVarsStruct &
 				// Storing spikes which are generated but not gonna arrive next turn
 				for (int j = 1; j < DelayRange*onemsbyTstep; ++j){
 					OutVars.SpikeList.TimeRchdStartInds.push_back(OutVars.SpikeList.SpikeSynInds.size());
-					for (auto Spike : SpikeQueue[CurrentQIndex]){
+					for (auto Spike : SpikeQueue[(CurrentQIndex+j)%(onemsbyTstep*DelayRange)]){
 						OutVars.SpikeList.SpikeSynInds.push_back(Spike);
 					}
 				}

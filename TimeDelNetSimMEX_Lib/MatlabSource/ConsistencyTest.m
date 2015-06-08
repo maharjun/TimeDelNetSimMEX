@@ -56,9 +56,9 @@ InputStruct.V = single(-65*ones(N,1));
 InputStruct.U = single(0.2*InputStruct.V);
 
 InputStruct.onemsbyTstep          = int32(1);
-InputStruct.NoOfms                = int32(2*60*1000);
+InputStruct.NoOfms                = int32(5*60*60*1000);
 InputStruct.DelayRange            = int32(RecurrentNetParams.DelayRange);
-InputStruct.StorageStepSize       = int32(10000);
+InputStruct.StorageStepSize       = int32(30000);
 InputStruct.OutputControl         = strjoin(OutputOptions);
 InputStruct.StatusDisplayInterval = int32(2000);
 InputStruct.IExtGenState          = uint32(30);
@@ -124,7 +124,8 @@ clear OutputVars StateVars InitState FinalState;
 
 %%
 % Loading and renaming variables for sparse simulation
-load('../../TimeDelNetSimMEX_Exe/Data/SimResults1000DebugSparseLong.mat');
+% load('../../TimeDelNetSimMEX_Exe/Data/SimResults1000DebugSparseLong.mat');
+load('Simulation_Sparse_4_5Hrs.mat');
 clear OutputVarsSparse StateVarsSparse InitStateSparse FinalStateSparse;
 OutputVarsSparse = OutputVars;
 StateVarsSparse = StateVars;
@@ -190,17 +191,17 @@ max(abs(StateVarsDetailed.V(:,16000) - StateVarsSparse.V(:,3)))
 
 OutputOptions = { ...
 	'SpikeList', ...
-	'Final'%, ...
-%  	'Itot', ...
-% 	'V', ...
-% 	'U'
+	'Final' %, ...
+%     'Itot', ...
+%  	'V', ...
+%  	'U', ...
 % 	'WeightDeriv'
 	};
 % Clearing InputStruct
 clear InputStruct;
 
 % Getting Midway state
-InputStruct = ConvertStatetoInitialCond(StateVarsSparse, (1*60 + 20)*1000);
+InputStruct = ConvertStatetoInitialCond(StateVarsSparse, (1*60*60+0)*1000);
 
 InputStruct.a = single(a);
 InputStruct.b = single(b);
@@ -213,7 +214,7 @@ InputStruct.NEnd   = int32(NEndVect);
 InputStruct.Delay  = single(Delays);
 
 InputStruct.onemsbyTstep          = int32(1);
-InputStruct.NoOfms                = int32(10000);
+InputStruct.NoOfms                = int32(30000);
 InputStruct.DelayRange            = int32(RecurrentNetParams.DelayRange);
 InputStruct.StorageStepSize       = int32(0);
 InputStruct.OutputControl         = strjoin(OutputOptions);
