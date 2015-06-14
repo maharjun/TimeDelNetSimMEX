@@ -134,7 +134,7 @@ void CurrentAttenuate::operator() (tbb::blocked_range<int> &Range) const {
 void InputArgs::IExtFunc(float time, MexVector<float> &Iext)
 {
 	//((int)(time / 0.1))
-	int N = Iext.size();
+	size_t N = Iext.size();
 	if (time - 0.1 <= 0.015){	//((int)(time / 0.1))*
 		for (int i = 0; i < 100*N/2000; ++i)
 			Iext[i] = 9;
@@ -483,8 +483,8 @@ void CachedSpikeStorage(InternalVars &IntVars){
 	}
 	for (int j = 0; j < N; ++j){
 		if (LastSpikedTimeNeuron[j] == time){
-			int k = preSynNeuronSectionBeg[j];
-			int kend = preSynNeuronSectionEnd[j];
+			size_t k = preSynNeuronSectionBeg[j];
+			size_t kend = preSynNeuronSectionEnd[j];
 
 			if (k != kend){
 				int NoofCurrNeuronSpikes = kend - k;

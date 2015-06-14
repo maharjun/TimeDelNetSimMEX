@@ -40,7 +40,7 @@ public:
 	inline MexVector() : Array_End(NULL), isCurrentMemExternal(false), Array_Beg(NULL), Array_Last(NULL){};
 	inline explicit MexVector(size_t Size){
 		if (Size > 0){
-			int NumExtraBytes = Size*sizeof(T);
+			size_t NumExtraBytes = Size*sizeof(T);
 			if (MemCounter::MemUsageCount + NumExtraBytes <= MemCounter::MemUsageLimit){
 				MemCounter::MemUsageCount += NumExtraBytes;
 				Array_Beg = reinterpret_cast<T*>(mxCalloc(Size, sizeof(T)));
@@ -63,7 +63,7 @@ public:
 	inline MexVector(const MexVector<T> &M){
 		size_t Size = M.size();
 		if (Size > 0){
-			int NumExtraBytes = Size*sizeof(T);
+			size_t NumExtraBytes = Size*sizeof(T);
 			if (MemCounter::MemUsageCount + NumExtraBytes <= MemCounter::MemUsageLimit){
 				MemCounter::MemUsageCount += NumExtraBytes;
 				Array_Beg = reinterpret_cast<T*>(mxCalloc(Size, sizeof(T)));
@@ -96,7 +96,7 @@ public:
 	}
 	inline explicit MexVector(size_t Size, const T &Elem){
 		if (Size > 0){
-			int NumExtraBytes = Size*sizeof(T);
+			size_t NumExtraBytes = Size*sizeof(T);
 			if (MemCounter::MemUsageCount + NumExtraBytes <= MemCounter::MemUsageLimit){
 				MemCounter::MemUsageCount += NumExtraBytes;
 				Array_Beg = reinterpret_cast<T*>(mxCalloc(Size, sizeof(T)));
@@ -164,7 +164,7 @@ public:
 				resize(0);		// this ensures destruction of all elements
 				trim();
 			}
-			int NumExtraBytes = ExtSize*sizeof(T);
+			size_t NumExtraBytes = ExtSize*sizeof(T);
 			if (MemCounter::MemUsageCount + NumExtraBytes <= MemCounter::MemUsageLimit){
 				MemCounter::MemUsageCount += NumExtraBytes;
 				Array_Beg = reinterpret_cast<T*>(mxCalloc(ExtSize, sizeof(T)));
@@ -276,7 +276,7 @@ public:
 			if (Array_Beg != NULL){
 				// This is special bcuz reallocation requires (currCapacity + Cap)
 				// Locations to be free but increases memory by only (Cap - currCapacity)
-				int NumExtraBytes = (Cap)*sizeof(T);
+				size_t NumExtraBytes = (Cap)*sizeof(T);
 				if (MemCounter::MemUsageCount + NumExtraBytes <= MemCounter::MemUsageLimit){
 					MemCounter::MemUsageCount += (Cap - currCapacity)*sizeof(T);
 					Temp = reinterpret_cast<T*>(mxRealloc(Array_Beg, Cap*sizeof(T)));
@@ -286,7 +286,7 @@ public:
 				}
 			}
 			else{
-				int NumExtraBytes = Cap*sizeof(T);
+				size_t NumExtraBytes = Cap*sizeof(T);
 				if (MemCounter::MemUsageCount + NumExtraBytes <= MemCounter::MemUsageLimit){
 					MemCounter::MemUsageCount += NumExtraBytes;
 					Temp = reinterpret_cast<T*>(mxCalloc(Cap, sizeof(T)));
@@ -361,7 +361,7 @@ public:
 				}
 			
 			T* Temp;
-			int NumExtraBytes = (currSize)*sizeof(T);
+			size_t NumExtraBytes = (currSize)*sizeof(T);
 			if (MemCounter::MemUsageCount + NumExtraBytes <= MemCounter::MemUsageLimit){
 				MemCounter::MemUsageCount -= (this->capacity() - currSize)*sizeof(T);
 				Temp = reinterpret_cast<T*>(mxRealloc(Array_Beg, currSize*sizeof(T)));
@@ -430,7 +430,7 @@ public:
 	inline MexMatrix() : NRows(0), NCols(0), Capacity(0), isCurrentMemExternal(false), Array_Beg(NULL), RowReturnVector(){};
 	inline explicit MexMatrix(size_t NRows_, size_t NCols_) : RowReturnVector() {
 		if (NRows_*NCols_ > 0){
-			int NumExtraBytes = NRows_ * NCols_ * sizeof(T);
+			size_t NumExtraBytes = NRows_ * NCols_ * sizeof(T);
 			if (MemCounter::MemUsageCount + NumExtraBytes <= MemCounter::MemUsageLimit){
 				MemCounter::MemUsageCount += NumExtraBytes;
 				Array_Beg = reinterpret_cast<T*>(mxCalloc(NRows_ * NCols_, sizeof(T)));
@@ -567,7 +567,7 @@ public:
 				resize(0, 0);		// Ensure destruction of elements
 				trim();
 			}
-			int NumExtraBytes = MNumElems * sizeof(T);
+			size_t NumExtraBytes = MNumElems * sizeof(T);
 			if (MemCounter::MemUsageCount + NumExtraBytes <= MemCounter::MemUsageLimit){
 				MemCounter::MemUsageCount += NumExtraBytes;
 				Array_Beg = reinterpret_cast<T*>(mxCalloc(MNumElems, sizeof(T)));
@@ -659,7 +659,7 @@ public:
 				resize(0, 0);
 				trim();
 			}
-			int NumExtraBytes = Cap * sizeof(T);
+			size_t NumExtraBytes = Cap * sizeof(T);
 			if (MemCounter::MemUsageCount + NumExtraBytes <= MemCounter::MemUsageLimit){
 				MemCounter::MemUsageCount += NumExtraBytes;
 				temp = reinterpret_cast<T*>(mxCalloc(Cap, sizeof(T)));
