@@ -165,6 +165,7 @@ struct InternalVars{
 	MexVector<float> &Iext; // made reference cuz Iext is now a state variable
 
 	XorShiftPlus IExtGen;
+	size_t CurrentGenNeuron;
 	MexVector<MexVector<int> > &SpikeQueue;
 	MexVector<int> &LSTNeuron;
 	MexVector<int> &LSTSyn;
@@ -214,6 +215,7 @@ struct InternalVars{
 		WeightDeriv           (IArgs.WeightDeriv),
 		Iext                  (IArgs.Iext),
 		IExtGen               (),
+		CurrentGenNeuron      (0),
 		SpikeQueue            (IArgs.SpikeQueue),
 		LSTNeuron             (IArgs.LSTNeuron),
 		LSTSyn                (IArgs.LSTSyn),
@@ -234,11 +236,11 @@ struct InternalVars{
 		DelayRange         (IArgs.DelayRange),
 		CacheBuffering     (128),
 		I0                 (1.0f),
-		STDPMaxWinLen      (size_t(onemsbyTstep*(log(0.01) / log(pow((double)STDPDecayFactor, (double)onemsbyTstep))))),
+		STDPMaxWinLen      (size_t(onemsbyTstep*(log(0.001) / log(pow((double)STDPDecayFactor, (double)onemsbyTstep))))),
 		CurrentDecayFactor (powf(1.0f / 3.5, 1.0f / onemsbyTstep)),
-		IExtDecayFactor    (2.0f / 3),
-		IExtScaleFactor    (18),
-		STDPDecayFactor    (powf(0.7f, 1.0f / onemsbyTstep)),
+		IExtDecayFactor    (1.0f / 2),
+		IExtScaleFactor    (2.333f*20),
+		STDPDecayFactor    (powf(0.95f, 1.0f / onemsbyTstep)),
 		W0                 (0.1f),
 		MaxSynWeight       (10.0),
 		alpha              (0.5), 
@@ -362,6 +364,8 @@ private:
 struct OutputVarsStruct{
 	MexMatrix<float> WeightOut;
 	MexMatrix<float> Itot;
+	MexVector<int> IExtNeuron;
+
 	struct SpikeListStruct{
 		MexVector<int> SpikeSynInds;
 		MexVector<int> TimeRchdStartInds;
@@ -371,7 +375,8 @@ struct OutputVarsStruct{
 	OutputVarsStruct() :
 		WeightOut(),
 		Itot(),
-		SpikeList(){}
+		SpikeList(),
+		IExtNeuron(){}
 
 	void initialize(const InternalVars &);
 };
