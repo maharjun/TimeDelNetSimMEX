@@ -503,8 +503,8 @@ void CachedSpikeStorage(InternalVars &IntVars){
 	}
 	for (int j = 0; j < N; ++j){
 		if (LastSpikedTimeNeuron[j] == time){
-			int k = preSynNeuronSectionBeg[j];
-			int kend = preSynNeuronSectionEnd[j];
+			size_t k = preSynNeuronSectionBeg[j];
+			size_t kend = preSynNeuronSectionEnd[j];
 
 			if (k != kend){
 				int NoofCurrNeuronSpikes = kend - k;

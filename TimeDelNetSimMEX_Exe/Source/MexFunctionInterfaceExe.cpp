@@ -73,8 +73,10 @@ int main(){
 		mexFunction(4, lhs, 1, rhs);
 	}
 	catch (ExOps::ExCodes A){
-		printf("Mem Limit of %lld MB Exceeded\n", (MemCounter::MemUsageLimit) >> 20);
-		system("pause");
+		if (A == ExOps::EXCEPTION_MEM_FULL){
+			printf("Mem Limit of %lld MB Exceeded\n", (MemCounter::MemUsageLimit) >> 20);
+			system("pause");
+		}
 		mxDestroyArray(Input);
 		return 0;
 	}
