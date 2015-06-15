@@ -189,18 +189,18 @@ void InputArgs::IExtFunc(InternalVars &IntVars)
 
 void StateVarsOutStruct::initialize(const InternalVars &IntVars) {
 
-	int onemsbyTstep = IntVars.onemsbyTstep;
-	int NoOfms = IntVars.NoOfms;
-	int StorageStepSize = IntVars.StorageStepSize;
-	int Tbeg = IntVars.Time;
-	int nSteps = onemsbyTstep * NoOfms;
-	int OutputControl = IntVars.OutputControl;
-	int beta = IntVars.beta;
-	int N = IntVars.N;
-	int M = IntVars.M;
-	int DelayRange = IntVars.DelayRange;
+	auto onemsbyTstep = IntVars.onemsbyTstep;
+	auto NoOfms = IntVars.NoOfms;
+	auto StorageStepSize = IntVars.StorageStepSize;
+	auto Tbeg = IntVars.Time;
+	auto nSteps = onemsbyTstep * NoOfms;
+	auto OutputControl = IntVars.OutputControl;
+	auto beta = IntVars.beta;
+	auto N = IntVars.N;
+	auto M = IntVars.M;
+	auto DelayRange = IntVars.DelayRange;
 
-	int TimeDimLen;  // beta is the time offset from Tbeg which 
+	size_t TimeDimLen;  // beta is the time offset from Tbeg which 
 	// corresponds to the first valid storage location
 	if (StorageStepSize){
 		TimeDimLen = (nSteps - beta) / (StorageStepSize*onemsbyTstep) + 1;	//No. of times (StorageStepSize * onemsbyTstep)|time happens
@@ -246,15 +246,15 @@ void StateVarsOutStruct::initialize(const InternalVars &IntVars) {
 		this->CurrentQIndexOut = MexVector<int>(TimeDimLen);
 }
 void OutputVarsStruct::initialize(const InternalVars &IntVars){
-	int TimeDimLen;
-	int N = IntVars.N;
-	int onemsbyTstep = IntVars.onemsbyTstep;
-	int NoOfms = IntVars.NoOfms;
-	int StorageStepSize = IntVars.StorageStepSize;
-	int Tbeg = IntVars.Time;
-	int nSteps = onemsbyTstep * NoOfms;
-	int OutputControl = IntVars.OutputControl;
-	int beta = IntVars.beta;
+	size_t TimeDimLen;
+	auto N = IntVars.N;
+	auto onemsbyTstep = IntVars.onemsbyTstep;
+	auto NoOfms = IntVars.NoOfms;
+	auto StorageStepSize = IntVars.StorageStepSize;
+	auto Tbeg = IntVars.Time;
+	auto nSteps = onemsbyTstep * NoOfms;
+	auto OutputControl = IntVars.OutputControl;
+	auto beta = IntVars.beta;
 
 	if (IntVars.StorageStepSize){
 		TimeDimLen = (nSteps - beta) / (StorageStepSize*onemsbyTstep) + 1;	//No. of times (StorageStepSize * onemsbyTstep)|time happens
@@ -273,11 +273,11 @@ void OutputVarsStruct::initialize(const InternalVars &IntVars){
 		// just kept for code conformity
 }
 void FinalStateStruct::initialize(const InternalVars &IntVars){
-	int OutputControl	= IntVars.OutputControl;
-	int DelayRange		= IntVars.DelayRange;
-	int onemsbyTstep	= IntVars.onemsbyTstep;
-	int N				= IntVars.N;
-	int M				= IntVars.M;
+	auto OutputControl	= IntVars.OutputControl;
+	auto DelayRange		= IntVars.DelayRange;
+	auto onemsbyTstep	= IntVars.onemsbyTstep;
+	auto N				= IntVars.N;
+	auto M				= IntVars.M;
 
 	if (OutputControl & OutOps::FINAL_STATE_REQ){
 		this->V = MexVector<float>(N);
@@ -295,11 +295,11 @@ void FinalStateStruct::initialize(const InternalVars &IntVars){
 	this->Time = -1;
 }
 void InitialStateStruct::initialize(const InternalVars &IntVars){
-	int OutputControl = IntVars.OutputControl;
-	int DelayRange = IntVars.DelayRange;
-	int onemsbyTstep = IntVars.onemsbyTstep;
-	int N = IntVars.N;
-	int M = IntVars.M;
+	auto OutputControl = IntVars.OutputControl;
+	auto DelayRange = IntVars.DelayRange;
+	auto onemsbyTstep = IntVars.onemsbyTstep;
+	auto N = IntVars.N;
+	auto M = IntVars.M;
 
 	if (OutputControl & OutOps::INITIAL_STATE_REQ){
 		this->V = MexVector<float>(N);
@@ -627,7 +627,7 @@ void SimulateParallel(
 	// CurrentDecayFactor
 
 	size_t QueueSize = SpikeQueue.size();
-	int nSteps = NoOfms*onemsbyTstep;
+	size_t nSteps = NoOfms*onemsbyTstep;
 	size_t N = InputArguments.Neurons.size(), M = InputArguments.Network.size();			
 
 	
@@ -807,10 +807,10 @@ void SimulateParallel(
 
 		if (!(time % (1000 * onemsbyTstep))){
 			for (int j = 0; j < MExc; ++j){
-				Network[j].Weight += WeightDeriv[j] + 0.01;
+				Network[j].Weight += WeightDeriv[j] + 0.01f;
 				Network[j].Weight = (Network[j].Weight > 0) ? Network[j].Weight : 0;
 				Network[j].Weight = (Network[j].Weight < IntVars.MaxSynWeight) ? Network[j].Weight : IntVars.MaxSynWeight;
-				WeightDeriv[j] *= 0.9;
+				WeightDeriv[j] *= 0.9f;
 			}
 		}
 
