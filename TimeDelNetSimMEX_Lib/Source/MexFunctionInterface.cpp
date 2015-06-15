@@ -209,7 +209,7 @@ void takeInputFromMatlabStruct(mxArray* MatlabInputStruct, InputArgs &InputArgLi
 	// Initializing IExtGenState
 	genmxArrayPtr = mxGetField(MatlabInputStruct, 0, "IExtGenState");
 	if (genmxArrayPtr != NULL && !mxIsEmpty(genmxArrayPtr)){
-		int NElems = mxGetNumberOfElements(genmxArrayPtr);
+		size_t NElems = mxGetNumberOfElements(genmxArrayPtr);
 		InputArgList.IExtGenState = MexVector<uint32_t>(NElems);
 		genUIntPtr[0] = reinterpret_cast<uint32_t *>(mxGetData(genmxArrayPtr));
 		InputArgList.IExtGenState.copyArray(0, genUIntPtr[0], NElems);
