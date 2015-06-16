@@ -351,6 +351,27 @@ public:
 			M.isCurrentMemExternal = false;
 		}
 	}
+	inline void swap(MexVector<T> &M) {
+		T* Temp_Beg;
+		int Temp_Size;
+		int Temp_Capacity;
+		bool Temp_isCurrentMemExternal;
+
+		Temp_Size = M.size();
+		Temp_Capacity = M.capacity();
+		Temp_isCurrentMemExternal = M.ismemext();
+		Temp_Beg = M.releaseArray();
+
+		M.Array_Beg = Array_Beg;
+		M.Array_Last = Array_Last;
+		M.Array_End = Array_End;
+		M.isCurrentMemExternal = isCurrentMemExternal;
+
+		Array_Beg = Temp_Beg;
+		Array_Last = Temp_Beg + Temp_Size;
+		Array_End = Temp_Beg + Temp_Capacity;
+		isCurrentMemExternal = Temp_isCurrentMemExternal;
+	}
 	inline void trim(){
 		if (!isCurrentMemExternal){
 			size_t currSize = this->size();
@@ -397,6 +418,9 @@ public:
 	}
 	inline iterator end() const{
 		return Array_Last;
+	}
+	inline T &last() const{
+		return *(Array_Last - 1);
 	}
 	inline size_t size() const{
 		return Array_Last - Array_Beg;
@@ -749,6 +773,26 @@ public:
 			M.Array_Beg = NULL;
 			M.isCurrentMemExternal = false;
 		}
+	}
+	inline void swap(MexMatrix<T> &M){
+		size_t Temp_nRows, Temp_nCols;
+		size_t Temp_Capacity;
+		T* Temp_Beg;
+
+		Temp_nRows = M.NRows;
+		Temp_nCols = M.NCols;
+		Temp_Capacity = M.Capacity;
+		Temp_Beg = M.releaseArray();
+
+		M.Array_Beg = Array_Beg;
+		M.NRows = NRows;
+		M.NCols = NCols;
+		M.Capacity = Capacity;
+
+		Array_Beg = Temp_Beg;
+		NRows = Temp_nRows;
+		NCols = Temp_nCols;
+		Capacity = Temp_Capacity;
 	}
 	inline void clear(){
 		if (!isCurrentMemExternal)
