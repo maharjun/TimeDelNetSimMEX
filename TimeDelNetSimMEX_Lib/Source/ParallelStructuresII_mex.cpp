@@ -643,9 +643,12 @@ void SimulateParallel(
 	// Sectioning the Network and AuxArray Arrays as according to 
 	// definition of respective variables above
 	PreSynNeuronSectionBeg[Network[0].NStart - 1] = 0;
-	PreSynNeuronSectionEnd[Network[0].NStart - 1] = 0;
 	PostSynNeuronSectionBeg[Network[AuxArray[0]].NEnd - 1] = 0;
-	PostSynNeuronSectionEnd[Network[AuxArray[0]].NEnd - 1] = 0;
+
+	PreSynNeuronSectionBeg[0] = 0;
+	PreSynNeuronSectionEnd[0] = 0;
+	PostSynNeuronSectionBeg[0] = 0;
+	PostSynNeuronSectionEnd[0] = 0;
 
 	PreSynNeuronSectionEnd[Network[M - 1].NStart - 1] = M;
 	PostSynNeuronSectionEnd[Network[AuxArray[M - 1]].NEnd - 1] = M;
