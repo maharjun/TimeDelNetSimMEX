@@ -65,6 +65,17 @@ Temporary Items
 !TimeDelNetSimMEX_Lib/PropertySheets
 !TimeDelNetSimMEX_Lib/MatlabSource
 TimeDelNetSimMEX_Lib/MatlabSource/*.asv
+
+!/PolychronousGrpFind
+/PolychronousGrpFind/*
+!/PolychronousGrpFind/*.*
+!PolychronousGrpFind/Headers
+!PolychronousGrpFind/Source
+!PolychronousGrpFind/Items
+!PolychronousGrpFind/PropertySheets
+!PolychronousGrpFind/MatlabSource
+PolychronousGrpFind/MatlabSource/*.asv
+
 /*.open*
 # ignore all ~version of word documents
 *~*.*
