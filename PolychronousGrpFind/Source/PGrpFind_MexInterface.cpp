@@ -124,7 +124,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, mxArray *prhs[]){
 	//  9. onemsbyTstep
 	// 10. DelayRange
 
-	PGrpFind::SimulationVars SimVars(plhs[0]);
+	PGrpFind::SimulationVars SimVars(prhs[0]);
 
 	// Declaring Output Vectors
 	PGrpFind::OutputVariables OutVars;

@@ -74,6 +74,7 @@ TimeDelNetSimMEX_Lib/MatlabSource/*.asv
 !PolychronousGrpFind/Items
 !PolychronousGrpFind/PropertySheets
 !PolychronousGrpFind/MatlabSource
+PolychronousGrpFind/MatlabSource/*.mex*
 PolychronousGrpFind/MatlabSource/*.asv
 
 /*.open*

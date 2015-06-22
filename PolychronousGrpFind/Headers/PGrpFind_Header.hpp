@@ -63,7 +63,8 @@ struct PolyChrNeuronGroup{
 		SpikeNeurons(PGrpCopy.SpikeNeurons),
 		SpikeTimings(PGrpCopy.SpikeTimings),
 		SpikeSynapses(PGrpCopy.SpikeSynapses),
-		IndexVector(PGrpCopy.IndexVector){}
+		IndexVector(PGrpCopy.IndexVector),
+		MaxLength(PGrpCopy.MaxLength){}
 };
 
 struct SimulationVars{
