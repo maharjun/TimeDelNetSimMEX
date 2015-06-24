@@ -1,3 +1,7 @@
+%% Mex Function Include Cell
+addpath('..\..\x64\Release_Lib\');
+
+%% Network Setup and Simulation
 N = 5;
 
 A = [ 0    2    4    10   5   ;
@@ -32,14 +36,16 @@ InputStruct.DelayRange = int32(10);
 InputStruct.OutputFile = 'FiveNeuronNetPNGs.mat';
 save('../Data/InputData.mat', 'InputStruct');
 
+% OutputVars = PolychronousGrpFind(InputStruct);
+% clear functions;
 %% Read Data;
 
 load('../Data/FiveNeuronNetPNGs.mat', 'OutputVars');
 
 %% Process Data
 
-ChosenPNGIndex = 1;
+ChosenPNGIndex = 18;
 ChosenPNG = GetPNG(OutputVars, ChosenPNGIndex);
 ChosenRelativePNG = ConvertPNGtoRelative(ChosenPNG, InputStruct.NStart, InputStruct.Delay);
 
-DisplayPNG(ChosenRelativePNG);
+DisplayPNG(ChosenRelativePNG, length(InputStruct.a));

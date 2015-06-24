@@ -312,7 +312,7 @@ void PGrpFind::ProcessArrivingSpikes(SimulationVars &SimVars){
 		}
 	}
 
-	// CLearing SpikeQueue and MaxLengthofSpike Queues
+	// Clearing Current Vector of SpikeQueue and MaxLengthofSpike Queues
 	SpikeQueue[CurrentQIndex].clear();
 	MaxLengthofSpike[CurrentQIndex].clear();
 }
@@ -401,7 +401,7 @@ void PGrpFind::AnalyseGroups(SimulationVars &SimVars, uint64_t CurrentCombinatio
 	// rons That received  a spike  in the current interval, and performs group analysis
 	// (for prohibition) on the neurons that spiked in the current time instant.
 
-	for (auto NeuronIter = NeuronListIterBeg; NeuronIter != NeuronListIterEnd;){
+	for (auto NeuronIter = NeuronListIterBeg; NeuronIter != NeuronListIterEnd; ++NeuronIter){
 		int CurrNeuron = *NeuronIter;
 
 		// The prohibition list can only be touched in event of a spike else the given combi-
@@ -467,17 +467,11 @@ void PGrpFind::AnalyseGroups(SimulationVars &SimVars, uint64_t CurrentCombinatio
 					}
 				}
 				}
-				
 
 				// Performing Vector clearing operations
 				CurrentPreSynNeurons.clear();
 			}
 		}
-		// Clearing out relevant variables for this iteration.
-		CurrentContribSyn[CurrNeuron - 1].clear();
-		auto tempIter = NeuronIter;
-		++NeuronIter;
-		CurrentNZIinNeurons.erase(tempIter);
 	}
 }
 
@@ -515,6 +509,32 @@ void PGrpFind::PerformOutput(SimulationVars &SimVars, OutputVariables &OutVars){
 		// Outputting CombinationKey -> PNGCombinationKeyVect
 		OutVars.PNGCombinationKeyVect.push_back(Iter->first);
 	}
+}
+
+void PGrpFind::ResetIntermediateVars(SimulationVars &SimVars){
+	// Resets the following lists and arrays produced by ProcessArrivingSpikes
+	// in the mentioned manner
+	// CurrentNonZeroIinNeurons - This list is parsed for clearing the vectvect below
+	//                            and then cleared.
+	// CurrentContribSyn - This vectvect is cleared by emptying all vectors correspo-
+	//                     nding to neurons reffered to by the elements of CurrentNo-
+	//                     nZeroIinNeurons
+	
+	// Aliasing Simvars Variables
+	#pragma region Aliasing Simvars Variables
+	auto &CurrentNonZeroIinNeurons = SimVars.CurrentNonZeroIinNeurons;
+	auto &CurrentContribSyn        = SimVars.CurrentContribSyn;
+	#pragma endregion
+
+	auto CurrNZNeuronIterBeg = CurrentNonZeroIinNeurons.begin();
+	auto CurrNZNeuronIterEnd = CurrentNonZeroIinNeurons.end();
+
+	for (auto CurrentIter = CurrNZNeuronIterBeg; CurrentIter != CurrNZNeuronIterEnd; ++CurrentIter){
+		int CurrNeuron = *CurrentIter;
+		CurrentContribSyn[CurrNeuron - 1].clear();
+	}
+
+	CurrentNonZeroIinNeurons.clear();
 }
 
 void PGrpFind::GetPolychronousGroups(SimulationVars &SimVars, OutputVariables &OutVars){
@@ -692,6 +712,7 @@ void PGrpFind::GetPolychronousGroups(SimulationVars &SimVars, OutputVariables &O
 					ProcessArrivingSpikes(SimVars);
 					PublishCurrentSpikes(SimVars, CurrentGrp);
 					AnalyseGroups(SimVars, CombinationKey);
+					ResetIntermediateVars(SimVars);
 					StoreSpikes(SimVars, false);
 					if (NeuronCursor < 2 && time == (DelaySet[1] - DelaySet[1 - NeuronCursor])){
 
