@@ -72,9 +72,10 @@ void SimulationVars::initialize(mxArray *MatlabInputStruct){
 	this->SpikeQueue = MexVector<MexVector<int> >(SpikeQueueSize, MexVector<int>());
 	this->MaxLengthofSpike  = MexVector<MexVector<int> >(SpikeQueueSize, MexVector<int>());
 
-	this->Iin = MexVector<float>(N, 0.0f);
+	this->SpikeState = MexVector<int>(N, 0);
 
 	this->HasSpikedNow.resize(0);
+	this->HasSpikedPreviously.resize(0);
 
 	this->PreSynNeuronSectionBeg.resize(0);
 	this->PreSynNeuronSectionEnd.resize(0);
@@ -82,8 +83,11 @@ void SimulationVars::initialize(mxArray *MatlabInputStruct){
 	this->PostSynNeuronSectionEnd.resize(0);
 
 	this->CurrentContribSyn.resize(N, MexVector<int>());
-	this->NonZeroIinNeurons.clear();
+	this->PrevContribSyn.resize(N, MexVector<int>());
+
 	this->CurrentNonZeroIinNeurons.clear();
+	this->PreviousNonZeroIinNeurons.clear();
+
 	this->CurrentPreSynNeurons.clear();
 	//this->MaxLenUptilNow = MexVector<uint32_T>(N, uint32_T(0));
 	this->MaxLenInCurrIter = MexVector<uint32_T>(N, uint32_T(0));
@@ -172,37 +176,15 @@ void SimulationVars::initPostSynSectionArrays(){
 	}
 }
 
-void PGrpFind::AttenuateCurrent(SimulationVars &SimVars){
-	
-	auto &N = SimVars.N;
-	auto &ZeroCurrentThresh = SimVars.ZeroCurrentThresh;
-
-	auto &NonZeroIinNeurons = SimVars.NonZeroIinNeurons;
-	auto &Iin = SimVars.Iin;
-
-	auto IterBeg = NonZeroIinNeurons.begin();
-	auto IterEnd = NonZeroIinNeurons.end();
-
-	for (auto Iter = IterBeg; Iter != IterEnd;){
-		Iin[*Iter - 1] *= (1 / 3.5f);
-		if (Iin[*Iter - 1] < ZeroCurrentThresh){
-			auto tempIter = Iter++;
-			NonZeroIinNeurons.erase(tempIter);
-		}
-		else{
-			++Iter;
-		}
-	}
-}
-
 void PGrpFind::StoreSpikes(SimulationVars &SimVars, bool isInitialCase){
 	
 	// Aliasing SimVars Variables
 	#pragma region Aliasing SimVars Variables
 	auto &HasSpikedNow = SimVars.HasSpikedNow;
+	auto &HasSpikedPreviously = SimVars.HasSpikedPreviously;
 	auto &SpikeQueue = SimVars.SpikeQueue;
 	auto &Network = SimVars.Network;
-	auto &Iin = SimVars.Iin;
+	auto &SpikeState = SimVars.SpikeState;
 
 	auto &PreSynNeuronSectionBeg = SimVars.PreSynNeuronSectionBeg;
 	auto &PreSynNeuronSectionEnd = SimVars.PreSynNeuronSectionEnd;
@@ -220,8 +202,10 @@ void PGrpFind::StoreSpikes(SimulationVars &SimVars, bool isInitialCase){
 
 	for (int i = 0; i < nCurrSpikedNeu; ++i){
 		int CurrNeuron = HasSpikedNow[i];
-		// Perform Current Resetting
-		Iin[CurrNeuron - 1] = 0;
+		// Perform SpikeState Setting
+		SpikeState[CurrNeuron - 1] = 1;
+		HasSpikedPreviously.push_back(CurrNeuron);
+
 		int k = PreSynNeuronSectionBeg[CurrNeuron - 1];
 		int kend = PreSynNeuronSectionEnd[CurrNeuron - 1];
 		uint32_t CurrMaxLen = MaxLenInCurrIter[CurrNeuron - 1];
@@ -250,12 +234,11 @@ void PGrpFind::ProcessArrivingSpikes(SimulationVars &SimVars){
 	// Aliasing SimVars Variables
 	#pragma region Aliasing SimVars Variables
 	auto &Network = SimVars.Network;
-	auto &Iin = SimVars.Iin;
 	auto &SpikeQueue = SimVars.SpikeQueue;
 	auto &MaxLengthofSpike = SimVars.MaxLengthofSpike;
 
 	auto &CurrentContribSyn = SimVars.CurrentContribSyn;
-	auto &NonZeroIinNeurons = SimVars.NonZeroIinNeurons;
+	auto &PrevContribSyn    = SimVars.PrevContribSyn;
 	auto &CurrentNZIinNeurons = SimVars.CurrentNonZeroIinNeurons;
 	auto &MaxLenInCurrIter = SimVars.MaxLenInCurrIter;
 
@@ -282,7 +265,9 @@ void PGrpFind::ProcessArrivingSpikes(SimulationVars &SimVars){
 		if (CurrentContribSyn[CurrNEnd - 1].isempty()){ // First contributing synapse to current NEnd
 			CurrentNZIinNeurons.push_back(CurrNEnd);    // Pushing Neuron into the list of those cur-
 			                                            // rently receiving currents
-			MaxLenInCurrIter[CurrNEnd - 1] = *MaxLenIter + 1;
+			if (PrevContribSyn[CurrNEnd - 1].isempty()){
+				MaxLenInCurrIter[CurrNEnd - 1] = *MaxLenIter + 1;
+			}
 		}
 		else{
 			MaxLenInCurrIter[CurrNEnd - 1] = (*MaxLenIter >= MaxLenInCurrIter[CurrNEnd - 1]) ? 
@@ -297,19 +282,15 @@ void PGrpFind::ProcessArrivingSpikes(SimulationVars &SimVars){
 		CurrentContribSyn[CurrNEnd - 1].push_back(ActualSynapseInd); // Pushing current synapse into list of
 		                                                             // Contributing Synapses
 
-		if (Iin[CurrNEnd - 1] < ZeroCurrentThresh){           // if Neuron is NOT in NonZeroIinNeurons
-			NonZeroIinNeurons.push_back(CurrNEnd);        // Then push it into NonZeroIinNeurons
-		}
-
-		// Assigning Current
-		if (SynapseInd < 0){ 
-			// For case of Initial spike release
-			Iin[CurrNEnd - 1] += InitialWeight;
-		}
-		else{
-			// For all other cases
-			Iin[CurrNEnd - 1] += CurrSynapse.Weight;
-		}
+		//// Assigning Current
+		//if (SynapseInd < 0){ 
+		//	// For case of Initial spike release
+		//	Iin[CurrNEnd - 1] += InitialWeight;
+		//}
+		//else{
+		//	// For all other cases
+		//	Iin[CurrNEnd - 1] += CurrSynapse.Weight;
+		//}
 	}
 
 	// Clearing Current Vector of SpikeQueue and MaxLengthofSpike Queues
@@ -323,11 +304,11 @@ void PGrpFind::PublishCurrentSpikes(SimulationVars &SimVars, PolyChrNeuronGroup 
 	#pragma region Aliasing SimVars variables
 	auto &Network                = SimVars.Network;
 	auto &StrippedNetworkMapping = SimVars.StrippedNetworkMapping;
-	auto &Iin                    = SimVars.Iin;
 
 	auto &CurrentContribSyn      = SimVars.CurrentContribSyn;
-	auto &NonZeroIinNeurons      = SimVars.NonZeroIinNeurons;
+	auto &PrevContribSyn         = SimVars.PrevContribSyn;
 	auto &CurrentNZIinNeurons    = SimVars.CurrentNonZeroIinNeurons;
+	auto &SpikeState             = SimVars.SpikeState;
 	auto &HasSpikedNow           = SimVars.HasSpikedNow;
 	auto &CurrentPreSynNeurons   = SimVars.CurrentPreSynNeurons;
 
@@ -346,8 +327,10 @@ void PGrpFind::PublishCurrentSpikes(SimulationVars &SimVars, PolyChrNeuronGroup 
 	// and into HasSpikedNow
 	for (auto NeuronIter = NeuronListIterBeg; NeuronIter != NeuronListIterEnd; ++NeuronIter){
 		int CurrNeuron = *NeuronIter;
-		if (Iin[CurrNeuron - 1] >= SimVars.SpikingCurrentThresh){
-			// IN CASE A NEURON SPIKES
+		if (CurrentContribSyn[CurrNeuron - 1].size() + 
+		    PrevContribSyn[CurrNeuron - 1].size() >= SimVars.RequiredConcurrency
+		    && SpikeState[CurrNeuron - 1] == 0){
+			// IN CASE A NEURON SPIKES (and hasnt spiked in previous time instant)
 
 			// Update the MaxLength of the current PNG according to the new Maxlengths
 			// accorded to the spiking neurons
@@ -365,114 +348,13 @@ void PGrpFind::PublishCurrentSpikes(SimulationVars &SimVars, PolyChrNeuronGroup 
 			for (auto Elem : CurrentContribSyn[CurrNeuron - 1]){
 				PNGCurrent.SpikeSynapses.push_back(StrippedNetworkMapping[Elem]);
 			}
-			
-		}
-	}
-
-}
-
-void PGrpFind::AnalyseGroups(SimulationVars &SimVars, uint64_t CurrentCombination){
-
-	// Aliasing SimVars Variables
-	#pragma region Aliasing SimVars Variables
-	auto &Network = SimVars.Network;
-	auto &StrippedNetworkMapping = SimVars.StrippedNetworkMapping;
-	auto &Iin = SimVars.Iin;
-
-	auto &CurrentContribSyn = SimVars.CurrentContribSyn;
-	auto &NonZeroIinNeurons = SimVars.NonZeroIinNeurons;
-	auto &CurrentNZIinNeurons = SimVars.CurrentNonZeroIinNeurons;
-	auto &HasSpikedNow = SimVars.HasSpikedNow;
-	auto &CurrentPreSynNeurons = SimVars.CurrentPreSynNeurons;
-
-	auto &PolychronousGroupMap = SimVars.PolychronousGroupMap;
-	auto &ProhibCombiSet = SimVars.ProhibitedCombinationSet;
-
-	auto &NExc = SimVars.NExc;
-	auto &time = SimVars.time;
-	int &isCurrentPNGRecurrent = SimVars.isCurrentPNGRecurrent;
-	#pragma endregion
-
-	auto NeuronListIterBeg = CurrentNZIinNeurons.begin();
-	auto NeuronListIterEnd = CurrentNZIinNeurons.end();
-	
-	// This Loop is responsible for handling the case of repetetive and hence prohibited
-	// Neuron Combinations generated in this time instant. It loops through all the neu-
-	// rons That received  a spike  in the current interval, and performs group analysis
-	// (for prohibition) on the neurons that spiked in the current time instant.
-
-	for (auto NeuronIter = NeuronListIterBeg; NeuronIter != NeuronListIterEnd; ++NeuronIter){
-		int CurrNeuron = *NeuronIter;
-
-		// The prohibition list can only be touched in event of a spike else the given combi-
-		// nation is not a valid combination.  Also, it is required that neuron that fired is 
-		// Excitatory  (Bcuz we do not take into  consideration combinations where the Target
-		// Neuron is Inhibitory.
-		if (CurrNeuron <= NExc && Iin[CurrNeuron - 1] >= SimVars.SpikingCurrentThresh){
-			
-			// Code to add to prohibition list
-			// This is done when at least three synapses contribute to the neurons firing
-			if (CurrentContribSyn[CurrNeuron - 1].size() >= 2){
-				// Sorting the contributing presyn neurons in order to find
-				// combinations better
-				for (auto IncomingSyn : CurrentContribSyn[CurrNeuron - 1]){
-					CurrentPreSynNeurons.push_back(Network[IncomingSyn].NStart);
-				}
-				sort(CurrentPreSynNeurons.begin(), CurrentPreSynNeurons.end());
-				int nPreSynNeurons = CurrentPreSynNeurons.size();
-
-				// Loop through all Combinations. All actions performed inside
-				// are for each combination
-				for (int NeuronInd1 = 0             ; NeuronInd1 < nPreSynNeurons - 1; ++NeuronInd1){
-				for (int NeuronInd2 = NeuronInd1 + 1; NeuronInd2 < nPreSynNeurons    ; ++NeuronInd2){
-					int Neuron2 = CurrentPreSynNeurons[NeuronInd1];
-					int Neuron3 = CurrentPreSynNeurons[NeuronInd2];
-
-					// Calculating the Combination key for the current neuron combination
-					uint64_t LoopCombinationKey = (uint64_t)(CurrNeuron - 1)*NExc*NExc +
-					                              (uint64_t)(Neuron2    - 1)*NExc           +
-					                              (uint64_t)(Neuron3    - 1);
-
-					if (LoopCombinationKey < CurrentCombination){
-						// The case of the loop combination already having been processed
-						// Check if already in PolychronousGroupMap.
-						// if so remove it.
-						
-						auto MapIterEnd = PolychronousGroupMap.end();
-						auto LoopCombinationPNGEntry = PolychronousGroupMap.find(LoopCombinationKey);
-
-						if (LoopCombinationPNGEntry != MapIterEnd){
-							PolychronousGroupMap.erase(LoopCombinationPNGEntry);
-						}
-					}
-					else if (LoopCombinationKey == CurrentCombination){
-						// This is a case of a  recurrent PNG. In which case,  we need to increment
-						// the  recurrence counter. The  parent function  should run termination in
-						// case isCurrentPNGRecurrent hits 2. The loop is  not broken though as the
-						// other SubPNG's need to be processed as well as The Vectors and lists cl-
-						// eared.
-						isCurrentPNGRecurrent++;
-					}
-					else{
-						// This is the case where the Loop PNG is yet to be processed. In this case
-						// we will have to check if the Loop PNG is already in the Prohibition Set.
-						// If not, it needs to be added so that this PNG is not investigated later.
-
-						auto SetIterEnd = ProhibCombiSet.end();
-						auto LoopCombiSetElement = ProhibCombiSet.find(LoopCombinationKey);
-
-						if (LoopCombiSetElement == SetIterEnd){
-							ProhibCombiSet.insert(LoopCombinationKey);
-						}
-					}
-				}
-				}
-
-				// Performing Vector clearing operations
-				CurrentPreSynNeurons.clear();
+			for (auto Elem : PrevContribSyn[CurrNeuron - 1]){
+				PNGCurrent.SpikeSynapses.push_back(StrippedNetworkMapping[Elem]);
 			}
+			
 		}
 	}
+
 }
 
 void PGrpFind::PerformOutput(SimulationVars &SimVars, OutputVariables &OutVars){
@@ -514,27 +396,54 @@ void PGrpFind::PerformOutput(SimulationVars &SimVars, OutputVariables &OutVars){
 void PGrpFind::ResetIntermediateVars(SimulationVars &SimVars){
 	// Resets the following lists and arrays produced by ProcessArrivingSpikes
 	// in the mentioned manner
-	// CurrentNonZeroIinNeurons - This list is parsed for clearing the vectvect below
-	//                            and then cleared.
-	// CurrentContribSyn - This vectvect is cleared by emptying all vectors correspo-
-	//                     nding to neurons reffered to by the elements of CurrentNo-
-	//                     nZeroIinNeurons
-	
+	// PreviousNonZeroIinNeurons - This is parsed in  order to clear PrevContribSyn.  Then cleared.
+	// PrevContribSyn            - This is cleared by parsing through PrevContribSyn.
+	// CurrentNonZeroIinNeurons  - This list is swapped with the cleared PreviousNonZeroIinNeurons.
+	// 
+	// CurrentContribSyn         - This vectvect is cleared for all neurons in HasSpiked. Then, it
+	//                           - is swapped with PreviousContribSyn.
+	// SpikeState                - Set to zero by parsing through HasSpikedPreviously
+	// HasSpikedPreviously       - This is cleared after being used to reset SpikeState.
+
 	// Aliasing Simvars Variables
 	#pragma region Aliasing Simvars Variables
-	auto &CurrentNonZeroIinNeurons = SimVars.CurrentNonZeroIinNeurons;
-	auto &CurrentContribSyn        = SimVars.CurrentContribSyn;
+	auto &CurrentNonZeroIinNeurons  = SimVars.CurrentNonZeroIinNeurons;
+	auto &PreviousNonZeroIinNeurons = SimVars.PreviousNonZeroIinNeurons;
+	auto &HasSpikedNow              = SimVars.HasSpikedNow;
+	auto &HasSpikedPreviously       = SimVars.HasSpikedPreviously;
+	auto &CurrentContribSyn         = SimVars.CurrentContribSyn;
+	auto &PrevContribSyn            = SimVars.PrevContribSyn;
+	auto &SpikeState                = SimVars.SpikeState;
 	#pragma endregion
 
-	auto CurrNZNeuronIterBeg = CurrentNonZeroIinNeurons.begin();
-	auto CurrNZNeuronIterEnd = CurrentNonZeroIinNeurons.end();
+	auto PrevNZINeuronIterBeg = PreviousNonZeroIinNeurons.begin();
+	auto PrevNZINeuronIterEnd = PreviousNonZeroIinNeurons.end();
 
-	for (auto CurrentIter = CurrNZNeuronIterBeg; CurrentIter != CurrNZNeuronIterEnd; ++CurrentIter){
+	for (auto PrevIter = PrevNZINeuronIterBeg; PrevIter != PrevNZINeuronIterEnd; ++PrevIter){
+		int Neuron = *PrevIter;
+		PrevContribSyn[Neuron - 1].clear();
+	}
+
+	PreviousNonZeroIinNeurons.clear();
+	PreviousNonZeroIinNeurons.swap(CurrentNonZeroIinNeurons);
+
+	auto HasSpikedNowIterBeg = HasSpikedNow.begin();
+	auto HasSpikedNowIterEnd = HasSpikedNow.end();
+
+	for (auto CurrentIter = HasSpikedNowIterBeg; CurrentIter != HasSpikedNowIterEnd; ++CurrentIter){
 		int CurrNeuron = *CurrentIter;
 		CurrentContribSyn[CurrNeuron - 1].clear();
 	}
+	PrevContribSyn.swap(CurrentContribSyn);
 
-	CurrentNonZeroIinNeurons.clear();
+	auto HasSpikedPrevIterBeg = HasSpikedPreviously.begin();
+	auto HasSpikedPrevIterEnd = HasSpikedPreviously.end();
+
+	for (auto Iter = HasSpikedPrevIterBeg; Iter != HasSpikedPrevIterEnd; ++Iter){
+		int CurrNeuron = *Iter;
+		SpikeState[CurrNeuron - 1] = 0;
+	}
+	HasSpikedPreviously.clear();
 }
 
 void PGrpFind::GetPolychronousGroups(SimulationVars &SimVars, OutputVariables &OutVars){
@@ -563,9 +472,12 @@ void PGrpFind::GetPolychronousGroups(SimulationVars &SimVars, OutputVariables &O
 	auto &PostSynNeuronSectionEnd = SimVars.PostSynNeuronSectionEnd;
 	
 	auto &HasSpikedNow = SimVars.HasSpikedNow;
-	auto &Iin = SimVars.Iin;
+	auto &HasSpikedPreviously = SimVars.HasSpikedPreviously;
+	auto &SpikeState = SimVars.SpikeState;
 	auto &SpikeQueue = SimVars.SpikeQueue;
-	auto &NonZeroIinNeurons = SimVars.NonZeroIinNeurons;
+
+	auto &PrevContribSyn            = SimVars.PrevContribSyn;
+	auto &PreviousNonZeroIinNeurons = SimVars.PreviousNonZeroIinNeurons;
 
 	auto &MaxLengthofSpike = SimVars.MaxLengthofSpike;
 	auto &MaxLenInCurrIter = SimVars.MaxLenInCurrIter;
@@ -627,132 +539,133 @@ void PGrpFind::GetPolychronousGroups(SimulationVars &SimVars, OutputVariables &O
 			auto ProhibCombSetEnd = ProhibitedCombinationSet.end();
 			auto CurrentKeyElem = ProhibitedCombinationSet.find(CombinationKey);
 
-			if (CurrentKeyElem == ProhibCombSetEnd){
-				// If NOT Prohibited Analyse the PNG of the current Neuron combination
-				#pragma region Analyze PNG of current Neuron Combination
-				// Initializing Time Related States
-				time = 0;
-				CurrentQIndex = 0;
-				int NeuronCursor = 0; // This is a cursor  used to iterate through the
-				                      // different elements in SynapseSet and DelaySet
-				                      // when issuing and storing the initial spikes
+			// Analyse the PNG of the current Neuron combination
+			#pragma region Analyze PNG of current Neuron Combination
+			// Initializing Time Related States
+			time = 0;
+			CurrentQIndex = 0;
+			int NeuronCursor = 0; // This is a cursor  used to iterate through the
+				                    // different elements in SynapseSet and DelaySet
+				                    // when issuing and storing the initial spikes
 
-				// Initializing SynapseSet and DelaySet and Sorting
-				SynapseSet[0] = *(IncomingSynBeg + NeuIndex1);
-				SynapseSet[1] = *(IncomingSynBeg + NeuIndex2);
+			// Initializing SynapseSet and DelaySet and Sorting
+			SynapseSet[0] = *(IncomingSynBeg + NeuIndex1);
+			SynapseSet[1] = *(IncomingSynBeg + NeuIndex2);
 
-				sort(SynapseSet.begin(), SynapseSet.end(), SimulationVars::SynapseComp_Delays);
+			sort(SynapseSet.begin(), SynapseSet.end(), SimulationVars::SynapseComp_Delays);
 
-				DelaySet[0] = SynapseSet[0].DelayinTsteps;
-				DelaySet[1] = SynapseSet[1].DelayinTsteps;
+			DelaySet[0] = SynapseSet[0].DelayinTsteps;
+			DelaySet[1] = SynapseSet[1].DelayinTsteps;
+			
+			// Initializing Group Related States
+			CurrentGrp.reset();
+
+			// Initializing SpikeState  using SimVars.HasSpikedPreviously we
+			// make zero those elements that belong in NonZeroIinNeurons and 
+			// then clear NonZeroIinNeurons
+			auto HasSpikedPrevBeg = HasSpikedPreviously.begin();
+			auto HasSpikedPrevEnd = HasSpikedPreviously.end();
+			for (auto Iter = HasSpikedPrevBeg; Iter != HasSpikedPrevEnd; ++Iter){
+				SpikeState[*Iter - 1] = 0;
+			}
+			HasSpikedPreviously.clear();
+
+			// Initializing SpikeQueue and MaxLengthofSpike
+			for (int i = 0; i < QueueSize; ++i){
+				SpikeQueue[i].clear();
+				MaxLengthofSpike[i].clear();
+			}
 				
-				// Initializing Group Related States
-				CurrentGrp.reset();
+			// Initializing MaxLenInCurrIter as 0 for the neurons of current triplet
+			// This is done just before the  emmission of spikes as otherwise it can
+			// get erased by the  arrival of another spike  into the neuron prior to 
+			// its firing
+			
+			// Initializing PreviousNonZeroIinNeurons and PrevContribSyn
+			// This are the uncleared memories of the simulation of the previous Co-
+			// mbination
+			auto PrevNZINeuronBeg = PreviousNonZeroIinNeurons.begin();
+			auto PrevNZINeuronEnd = PreviousNonZeroIinNeurons.end();
 
-				// Initializing Iin using  SimVars.NonZeroIinNeurons we make zero
-				// those elements that belong in NonZeroIinNeurons and then clear
-				// NonZeroIinNeurons
-				auto NZIinNeuListBeg = NonZeroIinNeurons.begin();
-				auto NZIinNeuListEnd = NonZeroIinNeurons.end();
-				for (auto Iter = NZIinNeuListBeg; Iter != NZIinNeuListEnd; ++Iter){
-					Iin[*Iter - 1] = 0;
-				}
-				NonZeroIinNeurons.clear();
+			for (auto Iter = PrevNZINeuronBeg; Iter < PrevNZINeuronEnd; ++Iter){
+				PrevContribSyn[*Iter - 1].clear();
+			}
+			PreviousNonZeroIinNeurons.clear();
 
-				// Initializing SpikeQueue and MaxLengthofSpike
-				for (int i = 0; i < QueueSize; ++i){
-					SpikeQueue[i].clear();
-					MaxLengthofSpike[i].clear();
-				}
-				
-				// Initializing MaxLenInCurrIter as 0 for the neurons of current triplet
-				// this is done just before the  emmission of spikes as otherwise it can
-				// get erased by the  arrival of another spike  into the neuron prior to 
-				// its firing
-				
+			// Initializing Constants used for conditional evaluation
+			bool isSpikeQueueEmpty = false;
+			isCurrentPNGRecurrent = 0;
 
-				// Initializing Constants used for conditional evaluation
-				bool isSpikeQueueEmpty = false;
-				isCurrentPNGRecurrent = 0;
+			// initial iteration which releases the spike of the PreSynaptic neuron
+			// connected to the synapse with the highest delay
+			{
+				int CurrInitNeuron = SynapseSet[1].NStart; 
+				// Publishing this spike into CurrentGrp as it is not done during
+				// the publish spikes procedure
+				CurrentGrp.SpikeNeurons.push_back(CurrInitNeuron);
+				CurrentGrp.SpikeTimings.push_back(time);
+				CurrentGrp.IndexVector.push_back(CurrentGrp.SpikeSynapses.size());
 
-				// initial iteration which releases the spike of the PreSynaptic neuron
-				// connected to the synapse with the highest delay
-				{
-					int CurrInitNeuron = SynapseSet[1].NStart; 
+				HasSpikedNow.push_back(CurrInitNeuron);
+				// Initializind MaxLenInCurrIter for this neuron
+				MaxLenInCurrIter[CurrInitNeuron - 1] = 0;
+				StoreSpikes(SimVars, false);
+				time++;
+				CurrentQIndex = (CurrentQIndex + 1) % QueueSize;
+				NeuronCursor++;
+			}
+			// initializing HasSpiked, CurrentNonZeroIinNeurons, CurrentContribSyn
+			// These are  expected to  be aready in a  clear state so  no need for 
+			// initialization
+
+			// This loop simulates the network upto termination (OR a detection of
+			// recurrence) and determines the structure and apiking squence of the
+			// PNG created by the current combination of Neurons. The initial ite-
+			// ration has beed done outside the loop itself
+			while (!isSpikeQueueEmpty && isCurrentPNGRecurrent != 2 && CurrentGrp.MaxLength < 15){
+					
+				// Calling the functions to update current, process spikes, and analyse
+				// the generated  spikes for repetitions in  groups and to ward against
+				// recurrent groups, and to finally store the spikes in the spike queue
+				// for parsing at the time of arrival
+
+				ProcessArrivingSpikes(SimVars);
+				PublishCurrentSpikes(SimVars, CurrentGrp);
+				ResetIntermediateVars(SimVars);
+				StoreSpikes(SimVars, false);
+				if (NeuronCursor < 2 && time == (DelaySet[1] - DelaySet[1 - NeuronCursor])){
+
+					int CurrInitNeuron = SynapseSet[1 - NeuronCursor].NStart;
 					// Publishing this spike into CurrentGrp as it is not done during
 					// the publish spikes procedure
 					CurrentGrp.SpikeNeurons.push_back(CurrInitNeuron);
 					CurrentGrp.SpikeTimings.push_back(time);
 					CurrentGrp.IndexVector.push_back(CurrentGrp.SpikeSynapses.size());
 
-					HasSpikedNow.push_back(CurrInitNeuron);
 					// Initializind MaxLenInCurrIter for this neuron
 					MaxLenInCurrIter[CurrInitNeuron - 1] = 0;
+					HasSpikedNow.push_back(CurrInitNeuron);
 					StoreSpikes(SimVars, false);
-					time++;
-					CurrentQIndex = (CurrentQIndex + 1) % QueueSize;
 					NeuronCursor++;
 				}
-				// initializing HasSpiked, CurrentNonZeroIinNeurons, CurrentContribSyn
-				// These are  expected to  be aready in a  clear state so  no need for 
-				// initialization
 
-				// This loop simulates the network upto termination (OR a detection of
-				// recurrence) and determines the structure and apiking squence of the
-				// PNG created by the current combination of Neurons. The initial ite-
-				// ration has beed done outside the loop itself
-				while (!isSpikeQueueEmpty && isCurrentPNGRecurrent != 2 && CurrentGrp.MaxLength < 20){
-					
-					// Calling the functions to update current, process spikes, and analyse
-					// the generated  spikes for repetitions in  groups and to ward against
-					// recurrent groups, and to finally store the spikes in the spike queue
-					// for parsing at the time of arrival
+				// Temporal Variable Update
+				time++;
+				CurrentQIndex = (CurrentQIndex + 1) % QueueSize;
 
-					AttenuateCurrent(SimVars);
-					ProcessArrivingSpikes(SimVars);
-					PublishCurrentSpikes(SimVars, CurrentGrp);
-					AnalyseGroups(SimVars, CombinationKey);
-					ResetIntermediateVars(SimVars);
-					StoreSpikes(SimVars, false);
-					if (NeuronCursor < 2 && time == (DelaySet[1] - DelaySet[1 - NeuronCursor])){
-
-						int CurrInitNeuron = SynapseSet[1 - NeuronCursor].NStart;
-						// Publishing this spike into CurrentGrp as it is not done during
-						// the publish spikes procedure
-						CurrentGrp.SpikeNeurons.push_back(CurrInitNeuron);
-						CurrentGrp.SpikeTimings.push_back(time);
-						CurrentGrp.IndexVector.push_back(CurrentGrp.SpikeSynapses.size());
-
-						// Initializind MaxLenInCurrIter for this neuron
-						MaxLenInCurrIter[CurrInitNeuron - 1] = 0;
-						HasSpikedNow.push_back(CurrInitNeuron);
-						StoreSpikes(SimVars, false);
-						NeuronCursor++;
-					}
-
-					// Temporal Variable Update
-					time++;
-					CurrentQIndex = (CurrentQIndex + 1) % QueueSize;
-
-					// Calculating isSpikeQueueEmpty
-					int j;
-					for (j = 0; j < QueueSize && SpikeQueue[j].isempty(); ++j);
-					isSpikeQueueEmpty = (j == QueueSize); // means SpikeQueue[j].isempty() is true for all j in 1
-					                                      // to QueueSize
-				}
-				// Inserting the currently calculated PNG into the Map only if its 
-				// length exceeds a certain minimum threshold (in this case 1)
-				if (CurrentGrp.MaxLength > 1){
-					CurrentGrp.IndexVector.push_back(CurrentGrp.SpikeSynapses.size());
-					PolychronousGroupMap.emplace(CombinationKey, CurrentGrp);
-				}
-				#pragma endregion
+				// Calculating isSpikeQueueEmpty
+				int j;
+				for (j = 0; j < QueueSize && SpikeQueue[j].isempty(); ++j);
+				isSpikeQueueEmpty = (j == QueueSize); // means SpikeQueue[j].isempty() is true for all j in 1
+					                                    // to QueueSize
 			}
-			else{
-				// If Prohibited
-				// do nothing and remove the prohibition for this
-				ProhibitedCombinationSet.erase(CurrentKeyElem);
+			// Inserting the currently calculated PNG into the Map only if its 
+			// length exceeds a certain minimum threshold (in this case 1)
+			if (CurrentGrp.MaxLength > 1){
+				CurrentGrp.IndexVector.push_back(CurrentGrp.SpikeSynapses.size());
+				PolychronousGroupMap.emplace(CombinationKey, CurrentGrp);
 			}
+			#pragma endregion
 			
 		}
 		}
