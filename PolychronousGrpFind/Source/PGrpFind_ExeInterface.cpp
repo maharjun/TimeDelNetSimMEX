@@ -6,7 +6,7 @@
 #include <chrono>
 #include <iostream>
 #include "..\..\TimeDelNetSimMEX_Lib\Headers\MexMem.hpp"
-#include "..\..\TimeDelNetSimMEX_Lib\Source\MexFunctionInterface.cpp"
+#include "..\Source\PGrpFind_MexInterface.cpp"
 
 using namespace std;
 

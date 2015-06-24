@@ -63,7 +63,8 @@ struct PolyChrNeuronGroup{
 		SpikeNeurons(PGrpCopy.SpikeNeurons),
 		SpikeTimings(PGrpCopy.SpikeTimings),
 		SpikeSynapses(PGrpCopy.SpikeSynapses),
-		IndexVector(PGrpCopy.IndexVector){}
+		IndexVector(PGrpCopy.IndexVector),
+		MaxLength(PGrpCopy.MaxLength){}
 };
 
 struct SimulationVars{
@@ -205,7 +206,7 @@ void AnalyseGroups(SimulationVars &SimVars, uint64_t CurrentCombination);
 void ProcessArrivingSpikes(SimulationVars &SimVars);
 void StoreSpikes(SimulationVars &SimVars, bool isInitialCase);
 void CombinationRadixSort(SimulationVars &SimVars);
-
+void ResetIntermediateVars(SimulationVars &SimVars);
 void PerformOutput(SimulationVars &SimVars, OutputVariables &OutVars);
 void GetPolychronousGroups(SimulationVars &SimVars, OutputVariables &OutVars);
 

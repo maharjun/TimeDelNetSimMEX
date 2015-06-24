@@ -102,7 +102,7 @@ void SimulationVars::initNExcMExc(){
 	// and not 0.1. This is just in case of floating point roundoff errors
 	// Also assuming the prescence of at least one Exc Neuron.
 	NExc = 0;
-	for (int NExc = 0; Neurons[NExc].a < 0.08; ++NExc);
+	for (NExc = 0; NExc < N && Neurons[NExc].a < 0.08; ++NExc);
 	MExc = PreSynNeuronSectionEnd[NExc - 1];
 }
 
@@ -197,9 +197,12 @@ void PGrpFind::AttenuateCurrent(SimulationVars &SimVars){
 
 void PGrpFind::StoreSpikes(SimulationVars &SimVars, bool isInitialCase){
 	
+	// Aliasing SimVars Variables
+	#pragma region Aliasing SimVars Variables
 	auto &HasSpikedNow = SimVars.HasSpikedNow;
 	auto &SpikeQueue = SimVars.SpikeQueue;
 	auto &Network = SimVars.Network;
+	auto &Iin = SimVars.Iin;
 
 	auto &PreSynNeuronSectionBeg = SimVars.PreSynNeuronSectionBeg;
 	auto &PreSynNeuronSectionEnd = SimVars.PreSynNeuronSectionEnd;
@@ -210,12 +213,15 @@ void PGrpFind::StoreSpikes(SimulationVars &SimVars, bool isInitialCase){
 	auto &onemsbyTstep = SimVars.onemsbyTstep;
 	auto &DelayRange = SimVars.DelayRange;
 	auto &CurrentQIndex = SimVars.CurrentQIndex;
+	#pragma endregion
 
 	int QueueSize = onemsbyTstep*DelayRange;
 	int nCurrSpikedNeu = HasSpikedNow.size();
 
 	for (int i = 0; i < nCurrSpikedNeu; ++i){
 		int CurrNeuron = HasSpikedNow[i];
+		// Perform Current Resetting
+		Iin[CurrNeuron - 1] = 0;
 		int k = PreSynNeuronSectionBeg[CurrNeuron - 1];
 		int kend = PreSynNeuronSectionEnd[CurrNeuron - 1];
 		uint32_t CurrMaxLen = MaxLenInCurrIter[CurrNeuron - 1];
@@ -279,34 +285,34 @@ void PGrpFind::ProcessArrivingSpikes(SimulationVars &SimVars){
 			MaxLenInCurrIter[CurrNEnd - 1] = *MaxLenIter + 1;
 		}
 		else{
-			MaxLenInCurrIter[CurrNEnd - 1] = (*MaxLenIter >= MaxLenInCurrIter[CurrNEnd]) ? 
-				                              *MaxLenIter + 1 : MaxLenInCurrIter[CurrNEnd];
+			MaxLenInCurrIter[CurrNEnd - 1] = (*MaxLenIter >= MaxLenInCurrIter[CurrNEnd - 1]) ? 
+				                              *MaxLenIter + 1 : MaxLenInCurrIter[CurrNEnd - 1];
 			// This is code to Update the MaxLen for CurrNEnd given the current Spike
-			// Thi is because the first spike has already come and this must be grea-
-			// ter than it in order to replace it
-			//  (*MaxLenIter >= MaxLenInCurrIter[CurrNEnd]) 
+			// This is because the first spike has already come and this must be gre-
+			// ater than it in order to replace it
+			//  (*MaxLenIter >= MaxLenInCurrIter[CurrNEnd - 1]) 
 			//                     |||
-			// (*MaxLenIter + 1 > MaxLenInCurrIter[CurrNEnd])
+			// (*MaxLenIter + 1 > MaxLenInCurrIter[CurrNEnd - 1])
 		}
 		CurrentContribSyn[CurrNEnd - 1].push_back(ActualSynapseInd); // Pushing current synapse into list of
 		                                                             // Contributing Synapses
 
-		if (Iin[CurrNEnd] < ZeroCurrentThresh){           // if Neuron is NOT in NonZeroIinNeurons
+		if (Iin[CurrNEnd - 1] < ZeroCurrentThresh){           // if Neuron is NOT in NonZeroIinNeurons
 			NonZeroIinNeurons.push_back(CurrNEnd);        // Then push it into NonZeroIinNeurons
 		}
 
 		// Assigning Current
 		if (SynapseInd < 0){ 
 			// For case of Initial spike release
-			Iin[CurrNEnd] += InitialWeight;
+			Iin[CurrNEnd - 1] += InitialWeight;
 		}
 		else{
 			// For all other cases
-			Iin[CurrNEnd] += CurrSynapse.Weight;
+			Iin[CurrNEnd - 1] += CurrSynapse.Weight;
 		}
 	}
 
-	// CLearing SpikeQueue and MaxLengthofSpike Queues
+	// Clearing Current Vector of SpikeQueue and MaxLengthofSpike Queues
 	SpikeQueue[CurrentQIndex].clear();
 	MaxLengthofSpike[CurrentQIndex].clear();
 }
@@ -355,7 +361,7 @@ void PGrpFind::PublishCurrentSpikes(SimulationVars &SimVars, PolyChrNeuronGroup 
 			// Code to Store into the PNG
 			PNGCurrent.SpikeNeurons.push_back(CurrNeuron);
 			PNGCurrent.SpikeTimings.push_back(time);
-			PNGCurrent.SpikeTimings.push_back(PNGCurrent.SpikeSynapses.size());
+			PNGCurrent.IndexVector.push_back(PNGCurrent.SpikeSynapses.size());
 			for (auto Elem : CurrentContribSyn[CurrNeuron - 1]){
 				PNGCurrent.SpikeSynapses.push_back(StrippedNetworkMapping[Elem]);
 			}
@@ -394,7 +400,7 @@ void PGrpFind::AnalyseGroups(SimulationVars &SimVars, uint64_t CurrentCombinatio
 	// rons That received  a spike  in the current interval, and performs group analysis
 	// (for prohibition) on the neurons that spiked in the current time instant.
 
-	for (auto NeuronIter = NeuronListIterBeg; NeuronIter != NeuronListIterEnd;){
+	for (auto NeuronIter = NeuronListIterBeg; NeuronIter != NeuronListIterEnd; ++NeuronIter){
 		int CurrNeuron = *NeuronIter;
 
 		// The prohibition list can only be touched in event of a spike else the given combi-
@@ -469,11 +475,6 @@ void PGrpFind::AnalyseGroups(SimulationVars &SimVars, uint64_t CurrentCombinatio
 				CurrentPreSynNeurons.clear();
 			}
 		}
-		// Clearing out relevant variables for this iteration.
-		CurrentContribSyn[CurrNeuron - 1].clear();
-		auto tempIter = NeuronIter;
-		++NeuronIter;
-		CurrentNZIinNeurons.erase(tempIter);
 	}
 }
 
@@ -511,6 +512,32 @@ void PGrpFind::PerformOutput(SimulationVars &SimVars, OutputVariables &OutVars){
 		// Outputting CombinationKey -> PNGCombinationKeyVect
 		OutVars.PNGCombinationKeyVect.push_back(Iter->first);
 	}
+}
+
+void PGrpFind::ResetIntermediateVars(SimulationVars &SimVars){
+	// Resets the following lists and arrays produced by ProcessArrivingSpikes
+	// in the mentioned manner
+	// CurrentNonZeroIinNeurons - This list is parsed for clearing the vectvect below
+	//                            and then cleared.
+	// CurrentContribSyn - This vectvect is cleared by emptying all vectors correspo-
+	//                     nding to neurons reffered to by the elements of CurrentNo-
+	//                     nZeroIinNeurons
+	
+	// Aliasing Simvars Variables
+	#pragma region Aliasing Simvars Variables
+	auto &CurrentNonZeroIinNeurons = SimVars.CurrentNonZeroIinNeurons;
+	auto &CurrentContribSyn        = SimVars.CurrentContribSyn;
+	#pragma endregion
+
+	auto CurrNZNeuronIterBeg = CurrentNonZeroIinNeurons.begin();
+	auto CurrNZNeuronIterEnd = CurrentNonZeroIinNeurons.end();
+
+	for (auto CurrentIter = CurrNZNeuronIterBeg; CurrentIter != CurrNZNeuronIterEnd; ++CurrentIter){
+		int CurrNeuron = *CurrentIter;
+		CurrentContribSyn[CurrNeuron - 1].clear();
+	}
+
+	CurrentNonZeroIinNeurons.clear();
 }
 
 void PGrpFind::GetPolychronousGroups(SimulationVars &SimVars, OutputVariables &OutVars){
@@ -655,13 +682,24 @@ void PGrpFind::GetPolychronousGroups(SimulationVars &SimVars, OutputVariables &O
 				bool isSpikeQueueEmpty = false;
 				isCurrentPNGRecurrent = 0;
 
-				// initial iteration
-				HasSpikedNow.push_back(SynapseSet[2].NStart);
-				StoreSpikes(SimVars, false);
-				time++;
-				CurrentQIndex = (CurrentQIndex + 1) % QueueSize;
-				NeuronCursor++;
-				
+				// initial iteration which releases the spike of the PreSynaptic neuron
+				// connected to the synapse with the highest delay
+				{
+					int CurrInitNeuron = SynapseSet[2].NStart; 
+					// Publishing this spike into CurrentGrp as it is not done during
+					// the publish spikes procedure
+					CurrentGrp.SpikeNeurons.push_back(CurrInitNeuron);
+					CurrentGrp.SpikeTimings.push_back(time);
+					CurrentGrp.IndexVector.push_back(CurrentGrp.SpikeSynapses.size());
+
+					HasSpikedNow.push_back(CurrInitNeuron);
+					// Initializind MaxLenInCurrIter for this neuron
+					MaxLenInCurrIter[CurrInitNeuron - 1] = 0;
+					StoreSpikes(SimVars, false);
+					time++;
+					CurrentQIndex = (CurrentQIndex + 1) % QueueSize;
+					NeuronCursor++;
+				}
 				// initializing HasSpiked, CurrentNonZeroIinNeurons, CurrentContribSyn
 				// These are  expected to  be aready in a  clear state so  no need for 
 				// initialization
@@ -681,9 +719,20 @@ void PGrpFind::GetPolychronousGroups(SimulationVars &SimVars, OutputVariables &O
 					ProcessArrivingSpikes(SimVars);
 					PublishCurrentSpikes(SimVars, CurrentGrp);
 					AnalyseGroups(SimVars, CombinationKey);
+					ResetIntermediateVars(SimVars);
 					StoreSpikes(SimVars, false);
 					if (NeuronCursor < 3 && time == (DelaySet[2] - DelaySet[2 - NeuronCursor])){
-						HasSpikedNow.push_back(SynapseSet[2 - NeuronCursor].NStart);
+
+						int CurrInitNeuron = SynapseSet[2 - NeuronCursor].NStart;
+						// Publishing this spike into CurrentGrp as it is not done during
+						// the publish spikes procedure
+						CurrentGrp.SpikeNeurons.push_back(CurrInitNeuron);
+						CurrentGrp.SpikeTimings.push_back(time);
+						CurrentGrp.IndexVector.push_back(CurrentGrp.SpikeSynapses.size());
+
+						// Initializind MaxLenInCurrIter for this neuron
+						MaxLenInCurrIter[CurrInitNeuron - 1] = 0;
+						HasSpikedNow.push_back(CurrInitNeuron);
 						StoreSpikes(SimVars, false);
 						NeuronCursor++;
 					}
@@ -694,7 +743,7 @@ void PGrpFind::GetPolychronousGroups(SimulationVars &SimVars, OutputVariables &O
 
 					// Calculating isSpikeQueueEmpty
 					int j;
-					for (int j = 0; j < QueueSize && SpikeQueue[j].isempty(); ++j);
+					for (j = 0; j < QueueSize && SpikeQueue[j].isempty(); ++j);
 					isSpikeQueueEmpty = (j == QueueSize); // means SpikeQueue[j].isempty() is true for all j in 1
 					                                      // to QueueSize
 				}
