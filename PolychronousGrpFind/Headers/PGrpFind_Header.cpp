@@ -633,7 +633,7 @@ void PGrpFind::GetPolychronousGroups(SimulationVars &SimVars, OutputVariables &O
 			auto ProhibCombSetEnd = ProhibitedCombinationSet.end();
 			auto CurrentKeyElem = ProhibitedCombinationSet.find(CombinationKey);
 
-			if (CurrentKeyElem == ProhibCombSetEnd){
+			//if (CurrentKeyElem == ProhibCombSetEnd){
 				// If NOT Prohibited Analyse the PNG of the current Neuron combination
 				#pragma region Analyze PNG of current Neuron Combination
 				// Initializing Time Related States
@@ -718,10 +718,10 @@ void PGrpFind::GetPolychronousGroups(SimulationVars &SimVars, OutputVariables &O
 					AttenuateCurrent(SimVars);
 					ProcessArrivingSpikes(SimVars);
 					PublishCurrentSpikes(SimVars, CurrentGrp);
-					AnalyseGroups(SimVars, CombinationKey);
+					//AnalyseGroups(SimVars, CombinationKey);
 					ResetIntermediateVars(SimVars);
 					StoreSpikes(SimVars, false);
-					if (NeuronCursor < 3 && time == (DelaySet[2] - DelaySet[2 - NeuronCursor])){
+					while (NeuronCursor < 3 && time == (DelaySet[2] - DelaySet[2 - NeuronCursor])){
 
 						int CurrInitNeuron = SynapseSet[2 - NeuronCursor].NStart;
 						// Publishing this spike into CurrentGrp as it is not done during
@@ -749,21 +749,22 @@ void PGrpFind::GetPolychronousGroups(SimulationVars &SimVars, OutputVariables &O
 				}
 				// Inserting the currently calculated PNG into the Map only if its 
 				// length exceeds a certain minimum threshold (in this case 1)
-				if (CurrentGrp.MaxLength > 1){
+				if (CurrentGrp.MaxLength > 4){
 					CurrentGrp.IndexVector.push_back(CurrentGrp.SpikeSynapses.size());
 					PolychronousGroupMap.emplace(CombinationKey, CurrentGrp);
 				}
 				#pragma endregion
-			}
-			else{
+			//}
+			//else{
 				// If Prohibited
 				// do nothing and remove the prohibition for this
-				ProhibitedCombinationSet.erase(CurrentKeyElem);
-			}
+				//ProhibitedCombinationSet.erase(CurrentKeyElem);
+			//}
 			
 		}
 		}
 		}
+		std::cout << "Completed for target Neuron : " << NeuTarget << endl;
 	}
 	
 	// Performing Output Conversion from unordered_map<uint64_T, PolyChrNeuronGroup>

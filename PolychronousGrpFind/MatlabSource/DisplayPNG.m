@@ -1,12 +1,14 @@
-function [ FigureOut ] = DisplayPNG(RelativePNGIn, nNeurons)
+function [ FigureOut ] = DisplayPNG(RelativePNGIn)
 %DISPLAYPNG Summary of this function goes here
 %   Detailed explanation goes here
 
 VertexSet = [RelativePNGIn.SpikeTimings RelativePNGIn.SpikeNeurons];
 
-RandYShifts = 0.4*rand(nNeurons, 1) - 0.2;
+[UniqueNeurons, ~, Indirection] = unique(RelativePNGIn.SpikeNeurons);
+nNeurons = length(UniqueNeurons);
+RandYShifts = (0.4*rand(nNeurons, 1) - 0.2) + (1:nNeurons)';
 
-Jittered_Coords = VertexSet + [zeros(size(VertexSet(:,1))) RandYShifts(VertexSet(:,2))];
+Jittered_Coords = [VertexSet(:,1) RandYShifts(Indirection)];
 
 NInitialNeurons = nnz(RelativePNGIn.IndexVector == 0) - 1;
 

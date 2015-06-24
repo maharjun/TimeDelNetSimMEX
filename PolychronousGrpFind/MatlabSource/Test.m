@@ -1,7 +1,7 @@
 %% Mex Function Include Cell
 addpath('..\..\x64\Release_Lib\');
 
-%% Network Setup and Simulation
+%% Network Setup and Simulation (Case N = 5)
 N = 5;
 
 A = [ 0    2    4    10   5   ;
@@ -20,6 +20,7 @@ b = 0.2*ones(N,1);
 c = -65*ones(N,1);
 d = 8*ones(N,1);
 
+%%
 InputStruct.a = single(a);
 InputStruct.b = single(b);
 InputStruct.c = single(c);
@@ -35,17 +36,22 @@ InputStruct.DelayRange = int32(10);
 
 InputStruct.OutputFile = 'FiveNeuronNetPNGs.mat';
 save('../Data/InputData.mat', 'InputStruct');
+%% Calculate PNG's for Polychronized network of 1000 Neurons
 
 % OutputVars = PolychronousGrpFind(InputStruct);
 % clear functions;
 %% Read Data;
 
-load('../Data/FiveNeuronNetPNGs.mat', 'OutputVars');
+load('../Data/PNGsin1000Neurons.mat', 'OutputVars');
 
 %% Process Data
 
-ChosenPNGIndex = 18;
+ChosenPNGIndex = 422;
 ChosenPNG = GetPNG(OutputVars, ChosenPNGIndex);
 ChosenRelativePNG = ConvertPNGtoRelative(ChosenPNG, InputStruct.NStart, InputStruct.Delay);
 
-DisplayPNG(ChosenRelativePNG, length(InputStruct.a));
+DisplayPNG(ChosenRelativePNG);
+
+%% Check if there are any inhibitory neurons
+
+MaxNeurons = cellfun(max, OutputVars.PNGSpikeNeuronsVect);
