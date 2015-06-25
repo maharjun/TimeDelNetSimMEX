@@ -82,8 +82,10 @@ struct SimulationVars{
 	                                              // If a neuron spikes as a result of this spike it wil have a Max
 	                                              // Length of 1 + MaxLength corresponging to spike
 
-	MexVector<float> Iin;
+	MexVector<int> SpikeState;
+	
 	MexVector<int> HasSpikedNow;
+	MexVector<int> HasSpikedPreviously;
 
 	// Intermediate Vectors
 	MexVector<int> PreSynNeuronSectionBeg;
@@ -91,14 +93,19 @@ struct SimulationVars{
 	MexVector<int> PostSynNeuronSectionBeg;
 	MexVector<int> PostSynNeuronSectionEnd;
 
-	list<int> NonZeroIinNeurons;                  // This is the list of all Neurons  that are currently carrying into them-
-	                                              // selves a non zero current (thresholded by ZeroCurrentThresh)
+	MexVector<MexVector<int> > PrevContribSyn;    // This is a  vector of vectors  (one vector  per neuron)  with each vector
+	                                              // holding the indices of all the synapses that have contributed to the ne-
+	                                              // uron at the previous time instant. This list is cleared if the neuron 
+	                                              // has spiked in the previous time instant.
 
 	MexVector<MexVector<int> > CurrentContribSyn; // This is a  vector of vectors  (one vector  per neuron)  with each vector
 	                                              // holding the indices of all the synapses that have contributed to the ne-
 	                                              // uron at the particular time instant
 
-	list<int> CurrentNonZeroIinNeurons;           // This is a list of Neurons  that have  received NonZero  currents in the
+	MexVector<int> PreviousNonZeroIinNeurons;     // This is a list of Neurons  that have  received NonZero  currents in the
+	                                              // previous time instant. This therefore, also corresponds to the locatio-
+	                                              // ns in PrevContribSyn which are Non-Empty
+	MexVector<int> CurrentNonZeroIinNeurons;      // This is a list of Neurons  that have  received NonZero  currents in the
 	                                              // current time instant. This therefore, also corresponds to the locations
 	                                              // in CurrentContribSyn which are Non-Empty
 
@@ -131,7 +138,7 @@ struct SimulationVars{
 	const float ZeroCurrentThresh;
 	const float MinWeightSyn;
 	const float InitialWeight;
-
+	const int RequiredConcurrency;
 	int time;
 
 	static bool SynapseComp_NStart_NEnd(const Synapse &Syn1, const Synapse &Syn2){
@@ -152,12 +159,13 @@ struct SimulationVars{
 		Neurons(),
 		SpikeQueue(),
 		MaxLengthofSpike(),
-		Iin(),
+		SpikeState(),
 
 		SpikingCurrentThresh(16.0f),
 		ZeroCurrentThresh(0.3f),
 		MinWeightSyn(8.0f),
 		InitialWeight(7.0f),
+		RequiredConcurrency(2),
 
 		isCurrentPNGRecurrent(0),
 		time(0),
@@ -169,9 +177,11 @@ struct SimulationVars{
 		PostSynNeuronSectionEnd(),
 		
 		HasSpikedNow(),
+		HasSpikedPreviously(),
 		CurrentNonZeroIinNeurons(),
-		NonZeroIinNeurons(),
+		PreviousNonZeroIinNeurons(),
 		CurrentContribSyn(),
+		PrevContribSyn(),
 		CurrentPreSynNeurons(),
 		//MaxLenUptilNow(),
 		MaxLenInCurrIter(),
@@ -200,9 +210,7 @@ struct OutputVariables{
 	OutputVariables();
 };
 
-void AttenuateCurrent(SimulationVars &SimVars);
 void PublishCurrentSpikes(SimulationVars &SimVars, PolyChrNeuronGroup &PNGCurrent);
-void AnalyseGroups(SimulationVars &SimVars, uint64_t CurrentCombination);
 void ProcessArrivingSpikes(SimulationVars &SimVars);
 void StoreSpikes(SimulationVars &SimVars, bool isInitialCase);
 void CombinationRadixSort(SimulationVars &SimVars);
