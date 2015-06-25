@@ -1,4 +1,4 @@
-define $Simulation Variables$:
+define "Simulation Variables":
 	-- Network                  {Vector of Synapses that define the Network / Stripped Network}
 	-- FlippedExcNetwork        {Flip-Sorted Vector of Excitatory Synapses}
 	-- Neurons                  {Vector of Neurons holding the properties of each neuron}
@@ -35,8 +35,8 @@ def: Attenuate Current
 		InputCurrent[Neuron - 1] *= 1/3;
 
 def: Process Spike Queue
-	for each SpikeSynIndex in $Currently Arriving Vector in `SpikeQueue`$
-		Add Weight -> InputCurrent[SynapseList[SpikeSynIndex].NEnd - 1].
+	for each SpikeSynIndex in "Currently Arriving Vector in `SpikeQueue`"
+		update InputCurrent[SynapseList[SpikeSynIndex].NEnd - 1].
 		Add PreSynaptic Neuron into List of PreSyn Neurons causing SynapseList[SpikeSynIndex].NEnd to spike.
 		if Weight > Thresh
 			Signal Issuing of Spike from Current Neuron
@@ -55,7 +55,7 @@ def: Store Spikes in SpikeQueue
 				
 def MAIN:
 	
-	initialize $Simulator Variables$:
+	initialize "Simulator Variables":
 		-- Network
 		-- Neurons
 		-- onemsbyTstep
@@ -68,46 +68,46 @@ def MAIN:
 		-- HasSpikeNow   {The Set of neurons which have spiked at the current instant}
 		-- other variables by default construction / emptying
 	
-	perform $Discard all edges with weights < 8$, initialize following:
+	perform "Discard all edges with weights < 8", initialize following:
 		-- Network            {This contains the stripped network}
 		-- tempNetwork        {This contains the original Network}
 		-- StrippedNetMapping {This contains the Mapping from the Stripped Network to original network}
 	
-	initialize $PreSyn Section Variables$:
+	initialize "PreSyn Section Variables":
 		-- PreSynNeuronSectionBeg {Long Description -Understood-}
 		-- PreSynNeuronSectionEnd {Long Description -Understood-}
 	
-	initialize $Constants$:
+	initialize "Constants":
 		-- QueueSize {Size of SpikeQueue}
 		-- NExc {Number of Excitatory Neurons}
 		-- MExc {Number of Excitatory Synapses}
 	
-	initialize $Intermediate Variables$
+	initialize "Intermediate Variables"
 		-- FlippedExcNetwork {Flip-Sorted Network containing only Excitatory Synapses}
 	
-	initialize $PostSyn Section Variables$
+	initialize "PostSyn Section Variables"
 		-- PostSynNeuronSectionBeg {Long Description -Understood-}
 		-- PostSynNeuronSectionEnd {Long Description -Understood-}
 	
-	for each TargetNeuron whichis $Excitatory Neuron$
+	for each TargetNeuron which is "Excitatory Neuron"
 		assign IncomingSynCurr as:
-			$The Subvector of `FlippedExcNetwork` containing the 
-			(Excitatory) Incoming Synapses to `TargetNeuron`$
-		
-		for each Combination in $Combinations among `IncomingSynCurr`$:
+			"The Subvector of -FlippedExcNetwork- containing the 
+			(Excitatory) Incoming Synapses to `TargetNeuron`"
+		-Fill-
+		for each Combination in "Triplet Combinations among `IncomingSynCurr`":
 			if Combination is not in ProhibitedSet
 				// Analyse current combination
-				initialize the neuron simulation variables [1]
+				initialize "The neuron simulation variables [1]"
 					-- Iin
 					-- SpikeQueue
 					-- time
 					-- CurrentQIndex
 				create SynapseSet as:
-					$ The vector of synapses corresponding to the current combination $
+					" The vector of synapses corresponding to the current combination "
 				sort SynapseSet by Synapse.Delays in ascending order
 				
 				create DelaySet as:
-					$ The Delays of Synapses in SynapseSet $
+					" The Delays of Synapses in SynapseSet "
 				perform Initial Iteration:
 					pushback SynapseSet.Last.NStart {PreSyn Neuron of highest delay Synapse} into HasSpikedNow
 					call StoreSpikes using Initial State as true
@@ -120,10 +120,10 @@ def MAIN:
 					call AnalyseGroups using CurrentCombination
 					
 					call StoreSpikes using InitialState as false // store spikes in SpikeQueue
-					if $ any initial spikes are left $ and 
-					   time = $ time such that next Initial Spike must happen now to coincide with others $
+					if " any initial spikes are left " and 
+					   time = " time such that next Initial Spike must happen now to coincide with others "
 						
-						pushback $Starting Neuron of corresponding synapse in `SynapseSet`$ into HasSpikedNow
+						pushback "Starting Neuron of corresponding synapse in `SynapseSet`" into HasSpikedNow
 						call StoreSpikes using InitialState as true
 					increment time
 					increment CurrentQIndex mod QueueSize

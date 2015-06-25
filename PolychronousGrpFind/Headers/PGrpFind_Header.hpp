@@ -5,6 +5,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <list>
+#include <iostream>
 
 #include "..\..\TimeDelNetSimMEX_Lib\Headers\MexMem.hpp"
 #include "..\..\TimeDelNetSimMEX_Lib\Headers\NeuronSim.hpp"
@@ -82,6 +83,12 @@ struct SimulationVars{
 	                                              // If a neuron spikes as a result of this spike it wil have a Max
 	                                              // Length of 1 + MaxLength corresponging to spike
 
+	MexVector<MexVector<float> > ProbabilityofSpike; // In the above manner,  this holds the probability of emmission
+	                                                 // of the spike in question.  This is used in order to calculate
+	                                                 // Probability of firing of a neuron and keep a threshold on the
+	                                                 // same
+
+
 	MexVector<int> SpikeState;
 	
 	MexVector<int> HasSpikedNow;
@@ -116,9 +123,15 @@ struct SimulationVars{
 	                                              // Max Length for graph terminating at particular Neuron) upto the Neurons
 	                                              // which recieved current in the current time instant
 	
-	//MexVector<uint32_T> MaxLenInCurrIter;         // This is the vector in which,  all of the cells that correspond to neur-
-	//                                              // ons which fired in the  current instant contain the max Length upto the
-	//                                              // generation of that firing
+	MexVector<float> ProdofInvIncomingProbsPrev;  // Below Description for Previous time Instant
+	MexVector<float> SpikingProbsCurr;            // The spiking probabilities of all neurons that spiked in the current ti-
+	                                              // me instant. This is used during SpikeStore. set while publishing Spikes
+
+	MexVector<float> SumofExclusiveProbsCurr;     // Maintains  the sum of The  probability  that the incoming spike arrives 
+	                                              // exclusively at the  current time instant. Used  for calculating Spiking 
+	                                              // Probability.
+	MexVector<float> ProdofInvIncomingProbs;      // Maintains the  product of the  inverse probabilities of incoming spikes 
+												  // at the current time instant. Used for calculating Spiking Probability
 
 	// Creating Unordered Set and Map To store and process PNG
 	unordered_map<uint64_T, PolyChrNeuronGroup> PolychronousGroupMap;
@@ -139,6 +152,9 @@ struct SimulationVars{
 	const float MinWeightSyn;
 	const float InitialWeight;
 	const int RequiredConcurrency;
+	const float DelayedSpikeProb;
+	const float SpikeProbThreshold;
+
 	int time;
 
 	static bool SynapseComp_NStart_NEnd(const Synapse &Syn1, const Synapse &Syn2){
@@ -160,12 +176,15 @@ struct SimulationVars{
 		SpikeQueue(),
 		MaxLengthofSpike(),
 		SpikeState(),
+		ProbabilityofSpike(),
 
 		SpikingCurrentThresh(16.0f),
 		ZeroCurrentThresh(0.3f),
 		MinWeightSyn(8.0f),
 		InitialWeight(7.0f),
 		RequiredConcurrency(2),
+		DelayedSpikeProb(0.5),
+		SpikeProbThreshold(0.2),
 
 		isCurrentPNGRecurrent(0),
 		time(0),
@@ -183,9 +202,13 @@ struct SimulationVars{
 		CurrentContribSyn(),
 		PrevContribSyn(),
 		CurrentPreSynNeurons(),
-		//MaxLenUptilNow(),
 		MaxLenInCurrIter(),
 		
+		SpikingProbsCurr(),
+		ProdofInvIncomingProbsPrev(),
+		SumofExclusiveProbsCurr(),
+		ProdofInvIncomingProbs(),
+
 		PolychronousGroupMap(),
 		ProhibitedCombinationSet(){}
 
@@ -216,6 +239,26 @@ void StoreSpikes(SimulationVars &SimVars, bool isInitialCase);
 void CombinationRadixSort(SimulationVars &SimVars);
 void ResetIntermediateVars(SimulationVars &SimVars);
 void PerformOutput(SimulationVars &SimVars, OutputVariables &OutVars);
+inline float FindSpikingProb(
+	float SumofExclusiveProbsCurr, 
+	float ProdofInvIncomingProbs, 
+	int nPrevSpikes, 
+	float DelayedSpikingProb,
+	float ProbPreviousSpike = 0
+	){
+	float ProbofnCurrEquals1 = SumofExclusiveProbsCurr;
+	float ProbofnCurrGreaterEquals2 = 1 - ProdofInvIncomingProbs - ProbofnCurrEquals1;
+	//if (ProbofnCurrEquals1 > 1.0f + 2E-6f || ProbofnCurrEquals1 < -2E-6f || ProbofnCurrGreaterEquals2 > 1.0f + 2E-6 || ProbofnCurrGreaterEquals2 < -2E-6f)
+	//	std::cout << "Wierd Shit" << endl;
+
+	if (nPrevSpikes){ // if nPrevSpikes == 1
+		return ProbPreviousSpike*ProbofnCurrEquals1*DelayedSpikingProb +
+			ProbofnCurrGreaterEquals2;
+	}
+	else{
+		return ProbofnCurrGreaterEquals2;
+	}
+}
 void GetPolychronousGroups(SimulationVars &SimVars, OutputVariables &OutVars);
 
 }

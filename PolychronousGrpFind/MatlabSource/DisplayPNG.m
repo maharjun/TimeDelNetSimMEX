@@ -6,16 +6,22 @@ VertexSet = [RelativePNGIn.SpikeTimings RelativePNGIn.SpikeNeurons];
 
 [UniqueNeurons, ~, Indirection] = unique(RelativePNGIn.SpikeNeurons);
 nNeurons = length(UniqueNeurons);
-RandYShifts = (0.4*rand(nNeurons, 1) - 0.2) + (1:nNeurons)';
+RandYShifts = (4*rand(nNeurons, 1) - 2) + (1:nNeurons)';
 
 Jittered_Coords = [VertexSet(:,1) RandYShifts(Indirection)];
 
-NInitialNeurons = nnz(RelativePNGIn.IndexVector == 0) - 1;
-
 VertexIndsforSynapses = zeros(size(RelativePNGIn.SpikeSynapses));
 VertexIndsforSynapses(RelativePNGIn.IndexVector(1:end-1) + 1) = 1;
+DiffIndexVect = RelativePNGIn.IndexVector(2:end) - RelativePNGIn.IndexVector(1:end-1);
+InitNeuronInds = find(DiffIndexVect == 0);
+
+for i = 1:length(InitNeuronInds)
+	VertexIndsforSynapses(RelativePNGIn.IndexVector(InitNeuronInds(i)) + 1) = ...
+	VertexIndsforSynapses(RelativePNGIn.IndexVector(InitNeuronInds(i)) + 1) + 1;
+end
+
+
 VertexIndsforSynapses = cumsum(VertexIndsforSynapses);
-VertexIndsforSynapses = VertexIndsforSynapses + NInitialNeurons;
 
 NAdjMat = size(RelativePNGIn.SpikeTimings, 1);
 

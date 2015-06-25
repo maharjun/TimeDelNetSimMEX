@@ -42,13 +42,14 @@ save('../Data/InputData.mat', 'InputStruct');
 % clear functions;
 %% Read Data;
 
-load('../Data/PNGsin1000Neurons.mat', 'OutputVars');
+load('../Data/PNGsin1000NeuronsWOProhibWJitter.mat', 'OutputVars');
 
 %% Process Data
 
-ChosenPNGIndex = 422;
+ChosenPNGIndex = 1;
 ChosenPNG = GetPNG(OutputVars, ChosenPNGIndex);
-ChosenRelativePNG = ConvertPNGtoRelative(ChosenPNG, InputStruct.NStart, InputStruct.Delay);
+ChosenPNGWOInhib = GetPNGWOInhib(ChosenPNG, 800);
+ChosenRelativePNG = ConvertPNGtoRelative(ChosenPNGWOInhib, InputStruct.NStart, InputStruct.Delay);
 
 DisplayPNG(ChosenRelativePNG);
 

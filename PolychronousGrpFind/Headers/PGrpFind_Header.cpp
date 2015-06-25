@@ -71,6 +71,7 @@ void SimulationVars::initialize(mxArray *MatlabInputStruct){
 	int SpikeQueueSize = this->DelayRange*this->onemsbyTstep;
 	this->SpikeQueue = MexVector<MexVector<int> >(SpikeQueueSize, MexVector<int>());
 	this->MaxLengthofSpike  = MexVector<MexVector<int> >(SpikeQueueSize, MexVector<int>());
+	this->ProbabilityofSpike = MexVector<MexVector<float> >(SpikeQueueSize, MexVector<float>());
 
 	this->SpikeState = MexVector<int>(N, 0);
 
@@ -89,8 +90,12 @@ void SimulationVars::initialize(mxArray *MatlabInputStruct){
 	this->PreviousNonZeroIinNeurons.clear();
 
 	this->CurrentPreSynNeurons.clear();
-	//this->MaxLenUptilNow = MexVector<uint32_T>(N, uint32_T(0));
 	this->MaxLenInCurrIter = MexVector<uint32_T>(N, uint32_T(0));
+
+	this->SpikingProbsCurr = MexVector<float>(N, float(0));
+	this->ProdofInvIncomingProbsPrev = MexVector<float>(N, float(0));
+	this->SumofExclusiveProbsCurr = MexVector<float>(N, float(0));
+	this->ProdofInvIncomingProbs = MexVector<float>(N, float(0));
 
 	this->PolychronousGroupMap.clear();
 	this->ProhibitedCombinationSet.clear();
@@ -192,6 +197,9 @@ void PGrpFind::StoreSpikes(SimulationVars &SimVars, bool isInitialCase){
 	auto &MaxLengthofSpike = SimVars.MaxLengthofSpike;
 	auto &MaxLenInCurrIter = SimVars.MaxLenInCurrIter;
 
+	auto &ProbabilityofSpike = SimVars.ProbabilityofSpike;
+	auto &SpikingProbsCurr = SimVars.SpikingProbsCurr;
+
 	auto &onemsbyTstep = SimVars.onemsbyTstep;
 	auto &DelayRange = SimVars.DelayRange;
 	auto &CurrentQIndex = SimVars.CurrentQIndex;
@@ -209,12 +217,15 @@ void PGrpFind::StoreSpikes(SimulationVars &SimVars, bool isInitialCase){
 		int k = PreSynNeuronSectionBeg[CurrNeuron - 1];
 		int kend = PreSynNeuronSectionEnd[CurrNeuron - 1];
 		uint32_t CurrMaxLen = MaxLenInCurrIter[CurrNeuron - 1];
+		float CurrSpikingProb = SpikingProbsCurr[CurrNeuron - 1];
+
 		if (isInitialCase){
 			for (; k < kend; ++k){
 				Synapse CurrSyn = Network[k];
 				int CurrInsertIndex = (CurrSyn.DelayinTsteps + CurrentQIndex) % QueueSize;
 				MaxLengthofSpike[CurrInsertIndex].push_back(CurrMaxLen);
 				SpikeQueue[CurrInsertIndex].push_back(~k);
+				ProbabilityofSpike[CurrInsertIndex].push_back(CurrSpikingProb);
 			}
 		}
 		else{
@@ -223,6 +234,7 @@ void PGrpFind::StoreSpikes(SimulationVars &SimVars, bool isInitialCase){
 				int CurrInsertIndex = (CurrSyn.DelayinTsteps + CurrentQIndex) % QueueSize;
 				MaxLengthofSpike[CurrInsertIndex].push_back(CurrMaxLen);
 				SpikeQueue[CurrInsertIndex].push_back(k);
+				ProbabilityofSpike[CurrInsertIndex].push_back(CurrSpikingProb);
 			}
 		}
 	}
@@ -236,11 +248,15 @@ void PGrpFind::ProcessArrivingSpikes(SimulationVars &SimVars){
 	auto &Network = SimVars.Network;
 	auto &SpikeQueue = SimVars.SpikeQueue;
 	auto &MaxLengthofSpike = SimVars.MaxLengthofSpike;
+	auto &ProbabilityofSpike = SimVars.ProbabilityofSpike;
 
 	auto &CurrentContribSyn = SimVars.CurrentContribSyn;
 	auto &PrevContribSyn    = SimVars.PrevContribSyn;
 	auto &CurrentNZIinNeurons = SimVars.CurrentNonZeroIinNeurons;
 	auto &MaxLenInCurrIter = SimVars.MaxLenInCurrIter;
+
+	auto &SumofExclusiveProbsCurr = SimVars.SumofExclusiveProbsCurr;
+	auto &ProdofInvIncomingProbs = SimVars.ProdofInvIncomingProbs;
 
 	auto &CurrentQIndex = SimVars.CurrentQIndex;
 	auto &ZeroCurrentThresh = SimVars.ZeroCurrentThresh;
@@ -255,23 +271,33 @@ void PGrpFind::ProcessArrivingSpikes(SimulationVars &SimVars){
 	auto MaxLenIterEnd = MaxLengthofSpike[CurrentQIndex].end();
 	auto MaxLenIter = MaxLenIterBeg;
 
-	for (; SpikeIter < SpikeIterEnd; ++SpikeIter, ++MaxLenIter){
+	auto ProbIterBeg = ProbabilityofSpike[CurrentQIndex].begin();
+	auto ProbIterEnd = ProbabilityofSpike[CurrentQIndex].end();
+	auto ProbIter = ProbIterBeg;
+
+	for (; SpikeIter < SpikeIterEnd; ++SpikeIter, ++MaxLenIter, ++ProbIter){
 		int SynapseInd = *SpikeIter;
 		int ActualSynapseInd = (SynapseInd < 0) ? ~SynapseInd : SynapseInd;
 
 		Synapse CurrSynapse = Network[ActualSynapseInd];
 		int CurrNEnd = CurrSynapse.NEnd;
-
+		int CurrMaxLen = *MaxLenIter;
+		float CurrProbability = *ProbIter;
 		if (CurrentContribSyn[CurrNEnd - 1].isempty()){ // First contributing synapse to current NEnd
 			CurrentNZIinNeurons.push_back(CurrNEnd);    // Pushing Neuron into the list of those cur-
 			                                            // rently receiving currents
 			if (PrevContribSyn[CurrNEnd - 1].isempty()){
-				MaxLenInCurrIter[CurrNEnd - 1] = *MaxLenIter + 1;
+				MaxLenInCurrIter[CurrNEnd - 1] = CurrMaxLen + 1;
 			}
+			SumofExclusiveProbsCurr[CurrNEnd - 1] = CurrProbability;
+			ProdofInvIncomingProbs[CurrNEnd - 1] = 1 - CurrProbability;
 		}
 		else{
-			MaxLenInCurrIter[CurrNEnd - 1] = (*MaxLenIter >= MaxLenInCurrIter[CurrNEnd - 1]) ? 
-				                              *MaxLenIter + 1 : MaxLenInCurrIter[CurrNEnd - 1];
+			MaxLenInCurrIter[CurrNEnd - 1] = (CurrMaxLen >= MaxLenInCurrIter[CurrNEnd - 1]) ?
+				                              CurrMaxLen + 1 : MaxLenInCurrIter[CurrNEnd - 1];
+			SumofExclusiveProbsCurr[CurrNEnd - 1] *= (1 - CurrProbability);
+			SumofExclusiveProbsCurr[CurrNEnd - 1] += ProdofInvIncomingProbs[CurrNEnd - 1] * CurrProbability;
+			ProdofInvIncomingProbs[CurrNEnd - 1] *= (1 - CurrProbability);
 			// This is code to Update the MaxLen for CurrNEnd given the current Spike
 			// This is because the first spike has already come and this must be gre-
 			// ater than it in order to replace it
@@ -296,6 +322,7 @@ void PGrpFind::ProcessArrivingSpikes(SimulationVars &SimVars){
 	// Clearing Current Vector of SpikeQueue and MaxLengthofSpike Queues
 	SpikeQueue[CurrentQIndex].clear();
 	MaxLengthofSpike[CurrentQIndex].clear();
+	ProbabilityofSpike[CurrentQIndex].clear();
 }
 
 void PGrpFind::PublishCurrentSpikes(SimulationVars &SimVars, PolyChrNeuronGroup &PNGCurrent){
@@ -316,6 +343,11 @@ void PGrpFind::PublishCurrentSpikes(SimulationVars &SimVars, PolyChrNeuronGroup 
 	auto &PolychronousGroupMap   = SimVars.PolychronousGroupMap;
 	auto &ProhibCombiSet         = SimVars.ProhibitedCombinationSet;
 
+	auto &SpikingProbsCurr        = SimVars.SpikingProbsCurr;
+	auto &ProdofInvIncomingProbsPrev = SimVars.ProdofInvIncomingProbsPrev;
+	auto &SumofExclusiveProbsCurr = SimVars.SumofExclusiveProbsCurr;
+	auto &ProdofInvIncomingProbs  = SimVars.ProdofInvIncomingProbs;
+
 	auto &NExc = SimVars.NExc;
 	auto &time = SimVars.time;
 	#pragma endregion
@@ -327,10 +359,21 @@ void PGrpFind::PublishCurrentSpikes(SimulationVars &SimVars, PolyChrNeuronGroup 
 	// and into HasSpikedNow
 	for (auto NeuronIter = NeuronListIterBeg; NeuronIter != NeuronListIterEnd; ++NeuronIter){
 		int CurrNeuron = *NeuronIter;
-		if (CurrentContribSyn[CurrNeuron - 1].size() + 
-		    PrevContribSyn[CurrNeuron - 1].size() >= SimVars.RequiredConcurrency
-		    && SpikeState[CurrNeuron - 1] == 0){
-			// IN CASE A NEURON SPIKES (and hasnt spiked in previous time instant)
+		float CurrProbofSpiking;
+		bool HasSpiked = CurrentContribSyn[CurrNeuron - 1].size() +
+			PrevContribSyn[CurrNeuron - 1].size() >= SimVars.RequiredConcurrency
+			&& SpikeState[CurrNeuron - 1] == 0;
+		CurrProbofSpiking = PGrpFind::FindSpikingProb(
+			SumofExclusiveProbsCurr[CurrNeuron - 1],
+			ProdofInvIncomingProbs[CurrNeuron - 1],
+			PrevContribSyn[CurrNeuron - 1].size(),
+			SimVars.DelayedSpikeProb,
+			1 - ProdofInvIncomingProbsPrev[CurrNeuron-1]);
+
+		SpikingProbsCurr[CurrNeuron - 1] = CurrProbofSpiking;
+
+		if (HasSpiked && CurrProbofSpiking > SimVars.SpikeProbThreshold){
+			// IN CASE A NEURON SPIKES (with a certain probability and hasnt spiked in previous time instant)
 
 			// Update the MaxLength of the current PNG according to the new Maxlengths
 			// accorded to the spiking neurons
@@ -403,7 +446,8 @@ void PGrpFind::ResetIntermediateVars(SimulationVars &SimVars){
 	//                           - is swapped with PreviousContribSyn.
 	// SpikeState                - Set to zero by parsing through HasSpikedPreviously
 	// HasSpikedPreviously       - This is cleared after being used to reset SpikeState.
-
+	// ProdofInvIncomingProbsPrev - This is swapped with ProdofInvIncomingProbs
+	
 	// Aliasing Simvars Variables
 	#pragma region Aliasing Simvars Variables
 	auto &CurrentNonZeroIinNeurons  = SimVars.CurrentNonZeroIinNeurons;
@@ -413,6 +457,9 @@ void PGrpFind::ResetIntermediateVars(SimulationVars &SimVars){
 	auto &CurrentContribSyn         = SimVars.CurrentContribSyn;
 	auto &PrevContribSyn            = SimVars.PrevContribSyn;
 	auto &SpikeState                = SimVars.SpikeState;
+	auto &SumofExclusiveProbsCurr   = SimVars.SumofExclusiveProbsCurr;
+	auto &ProdofInvIncomingProbs     = SimVars.ProdofInvIncomingProbs;
+	auto &ProdofInvIncomingProbsPrev = SimVars.ProdofInvIncomingProbsPrev;
 	#pragma endregion
 
 	auto PrevNZINeuronIterBeg = PreviousNonZeroIinNeurons.begin();
@@ -443,6 +490,8 @@ void PGrpFind::ResetIntermediateVars(SimulationVars &SimVars){
 		SpikeState[CurrNeuron - 1] = 0;
 	}
 	HasSpikedPreviously.clear();
+
+	ProdofInvIncomingProbsPrev.swap(ProdofInvIncomingProbs);
 }
 
 void PGrpFind::GetPolychronousGroups(SimulationVars &SimVars, OutputVariables &OutVars){
@@ -481,6 +530,9 @@ void PGrpFind::GetPolychronousGroups(SimulationVars &SimVars, OutputVariables &O
 	auto &MaxLengthofSpike = SimVars.MaxLengthofSpike;
 	auto &MaxLenInCurrIter = SimVars.MaxLenInCurrIter;
 
+	auto &ProbabilityofSpike = SimVars.ProbabilityofSpike;
+	auto &SpikingProbsCurr = SimVars.SpikingProbsCurr;
+
 	auto &PolychronousGroupMap = SimVars.PolychronousGroupMap;
 	auto &ProhibitedCombinationSet = SimVars.ProhibitedCombinationSet;
 	#pragma endregion
@@ -518,7 +570,7 @@ void PGrpFind::GetPolychronousGroups(SimulationVars &SimVars, OutputVariables &O
 	MexVector<Synapse> SynapseSet(3);  // This stores the triplet of synapses corresponding to the current triplet.
 	MexVector<int>     DelaySet(3, 0); // This stores the triplet of delays of the synapses held by SynapseSet
 
-	for (int NeuTarget = 1; NeuTarget <= NExc; ++NeuTarget){
+	for (int NeuTarget = 1; NeuTarget <= 100; ++NeuTarget){
 		int nPreSynNeurons = PostSynNeuronSectionEnd[NeuTarget - 1] - PostSynNeuronSectionBeg[NeuTarget - 1];
 		MexVector<Synapse>::iterator IncomingSynBeg = FlippedExcNetwork.begin() + PostSynNeuronSectionBeg[NeuTarget - 1];
 
@@ -574,10 +626,11 @@ void PGrpFind::GetPolychronousGroups(SimulationVars &SimVars, OutputVariables &O
 			}
 			HasSpikedPreviously.clear();
 
-			// Initializing SpikeQueue and MaxLengthofSpike
+			// Initializing SpikeQueue and MaxLengthofSpike, ProbabilityofSpike
 			for (int i = 0; i < QueueSize; ++i){
 				SpikeQueue[i].clear();
 				MaxLengthofSpike[i].clear();
+				ProbabilityofSpike[i].clear();
 			}
 				
 			// Initializing MaxLenInCurrIter as 0 for the neurons of current triplet
@@ -611,8 +664,10 @@ void PGrpFind::GetPolychronousGroups(SimulationVars &SimVars, OutputVariables &O
 				CurrentGrp.IndexVector.push_back(CurrentGrp.SpikeSynapses.size());
 
 				HasSpikedNow.push_back(CurrInitNeuron);
-				// Initializind MaxLenInCurrIter for this neuron
+				// Initializind MaxLenInCurrIter, SpikingProbsCurr for this neuron
 				MaxLenInCurrIter[CurrInitNeuron - 1] = 0;
+				SpikingProbsCurr[CurrInitNeuron - 1] = 1.0f;
+
 				StoreSpikes(SimVars, false);
 				time++;
 				CurrentQIndex = (CurrentQIndex + 1) % QueueSize;
@@ -626,7 +681,7 @@ void PGrpFind::GetPolychronousGroups(SimulationVars &SimVars, OutputVariables &O
 			// recurrence) and determines the structure and apiking squence of the
 			// PNG created by the current combination of Neurons. The initial ite-
 			// ration has beed done outside the loop itself
-			while (!isSpikeQueueEmpty && isCurrentPNGRecurrent != 2 && CurrentGrp.MaxLength < 15){
+			while (!isSpikeQueueEmpty && isCurrentPNGRecurrent != 2 && CurrentGrp.MaxLength < 20){
 					
 				// Calling the functions to update current, process spikes, and analyse
 				// the generated  spikes for repetitions in  groups and to ward against
@@ -648,6 +703,7 @@ void PGrpFind::GetPolychronousGroups(SimulationVars &SimVars, OutputVariables &O
 
 					// Initializind MaxLenInCurrIter for this neuron
 					MaxLenInCurrIter[CurrInitNeuron - 1] = 0;
+					SpikingProbsCurr[CurrInitNeuron - 1] = 1.0;
 					HasSpikedNow.push_back(CurrInitNeuron);
 					StoreSpikes(SimVars, false);
 					NeuronCursor++;
@@ -665,7 +721,7 @@ void PGrpFind::GetPolychronousGroups(SimulationVars &SimVars, OutputVariables &O
 			}
 			// Inserting the currently calculated PNG into the Map only if its 
 			// length exceeds a certain minimum threshold (in this case 1)
-			if (CurrentGrp.MaxLength > 4){
+			if (CurrentGrp.MaxLength > 5){
 				CurrentGrp.IndexVector.push_back(CurrentGrp.SpikeSynapses.size());
 				PolychronousGroupMap.emplace(CombinationKey, CurrentGrp);
 			}
