@@ -157,4 +157,10 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, mxArray *prhs[]){
 	mwSize StructArraySize[2] = { 1, 1 };
 
 	plhs[0] = putOutputToMatlabStruct(OutVars);
+#ifdef MEX_LIB
+	mexPrintf("Finished Mex Output\n");
+	mexEvalString("drawnow");
+#elif defined MEX_EXE
+	printf("Finished Mex Output\n");
+#endif
 }

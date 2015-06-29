@@ -19,6 +19,7 @@ InputStruct.onemsbyTstep          = int32(1);
 InputStruct.DelayRange            = int32(RecurrentNetParams.DelayRange);
 InputStruct.OutputFile            = 'PNGsin1000NeuronsWOProhib.mat';
 
-OutVars = PolychronousGrpFind(InputStruct);
+% OutVars = PolychronousGrpFind(InputStruct);
+% clear functions;
 
 save('..\..\PolychronousGrpFind\Data\InputData.mat', 'InputStruct');
