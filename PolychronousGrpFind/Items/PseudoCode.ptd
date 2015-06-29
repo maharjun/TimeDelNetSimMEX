@@ -1,7 +1,7 @@
-define "Simulation Variables":
+define "Input Variables":
 	-- Network                  {Vector of Synapses that define the Network / Stripped Network}
-	-- FlippedExcNetwork        {Flip-Sorted Vector of Excitatory Synapses}
 	-- Neurons                  {Vector of Neurons holding the properties of each neuron}
+	-- FlippedExcNetwork        {Flip-Sorted Vector of Excitatory Synapses}
 	-- onemsbyTstep             {Number of simulation time steps per ms}
 	-- DelayRange               {Maximum possible delay in ms}
 	-- HasSpikedNow             {The list of all neurons which have currently spiked and whose spikes
@@ -9,7 +9,8 @@ define "Simulation Variables":
 	-- ProhibitedSet            {Set of Neuron Combinations that are prohibited from starting PNGs as
 	                             they are subsets of another PNG}
 	-- PNGStorageMap            {unordered_map storing pairs of (Neuron Combination, PNG)}
-	
+
+define "Intermediate Variables":
 	-- PreSynNeuronSectionBeg   {PreSynNeuronSectionBeg[j] = Index in Network of the first synapse 
 	                             that starts from Neuron (j+1)}
 	
@@ -30,6 +31,8 @@ define "Simulation Variables":
 	                             holding the indices of all the synapses that have contributed to the
 	                             nueron at the particular time instant}
 	
+define 
+
 def: Attenuate Current
 	for each Neuron from 1 to N
 		InputCurrent[Neuron - 1] *= 1/3;
@@ -91,9 +94,9 @@ def MAIN:
 	
 	for each TargetNeuron which is "Excitatory Neuron"
 		assign IncomingSynCurr as:
-			"The Subvector of -FlippedExcNetwork- containing the 
+			"The Subvector of `FlippedExcNetwork` containing the 
 			(Excitatory) Incoming Synapses to `TargetNeuron`"
-		-Fill-
+		
 		for each Combination in "Triplet Combinations among `IncomingSynCurr`":
 			if Combination is not in ProhibitedSet
 				// Analyse current combination
