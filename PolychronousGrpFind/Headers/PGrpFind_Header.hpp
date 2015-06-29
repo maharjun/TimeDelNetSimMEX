@@ -6,6 +6,8 @@
 #include <unordered_set>
 #include <list>
 #include <iostream>
+#include <cstdio>
+#include <cstdarg>
 
 #include "..\..\TimeDelNetSimMEX_Lib\Headers\MexMem.hpp"
 #include "..\..\TimeDelNetSimMEX_Lib\Headers\NeuronSim.hpp"
@@ -260,7 +262,10 @@ inline float FindSpikingProb(
 	}
 }
 void GetPolychronousGroups(SimulationVars &SimVars, OutputVariables &OutVars);
+void WriteOutput(char *Format, ...);
 
 }
+
+
 
 #endif

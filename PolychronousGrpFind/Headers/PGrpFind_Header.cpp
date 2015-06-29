@@ -8,6 +8,33 @@
 
 using namespace PGrpFind;
 
+void PGrpFind::WriteOutput(char *Format, ...) {
+	char buffertemp[256], bufferFinal[256];
+	std::va_list Args;
+	va_start(Args, Format);
+	vsnprintf_s(buffertemp, 256, Format, Args);
+
+	char* tempIter = buffertemp;
+	char* FinalIter = bufferFinal;
+	for (; *tempIter != 0; ++tempIter, ++FinalIter){
+		if (*tempIter == '%'){
+			*FinalIter = '%';
+			++FinalIter;
+			*FinalIter = '%';
+		}
+		else{
+			*FinalIter = *tempIter;
+		}
+	}
+	*FinalIter = 0;
+#ifdef MEX_LIB
+	mexPrintf(bufferFinal);
+	mexEvalString("drawnow();");
+#elif defined MEX_EXE
+	printf(bufferFinal);
+#endif
+}
+
 PGrpFind::OutputVariables::OutputVariables():
 	PNGSpikeNeuronsVect(),
 	PNGSpikeTimingsVect(),
@@ -570,7 +597,7 @@ void PGrpFind::GetPolychronousGroups(SimulationVars &SimVars, OutputVariables &O
 	MexVector<Synapse> SynapseSet(3);  // This stores the triplet of synapses corresponding to the current triplet.
 	MexVector<int>     DelaySet(3, 0); // This stores the triplet of delays of the synapses held by SynapseSet
 
-	for (int NeuTarget = 1; NeuTarget <= 100; ++NeuTarget){
+	for (int NeuTarget = 1; NeuTarget <= NExc; ++NeuTarget){
 		int nPreSynNeurons = PostSynNeuronSectionEnd[NeuTarget - 1] - PostSynNeuronSectionBeg[NeuTarget - 1];
 		MexVector<Synapse>::iterator IncomingSynBeg = FlippedExcNetwork.begin() + PostSynNeuronSectionBeg[NeuTarget - 1];
 
@@ -730,7 +757,7 @@ void PGrpFind::GetPolychronousGroups(SimulationVars &SimVars, OutputVariables &O
 		}
 		}
 		}
-		std::cout << "Completed for target Neuron : " << NeuTarget << endl;
+		PGrpFind::WriteOutput("Completed for target Neuron : %d\n", NeuTarget);
 	}
 	
 	// Performing Output Conversion from unordered_map<uint64_T, PolyChrNeuronGroup>
