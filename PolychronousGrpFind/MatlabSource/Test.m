@@ -48,7 +48,8 @@ load('../Data/PNGsin1000Neurons.mat', 'OutputVars');
 
 ChosenPNGIndex = 422;
 ChosenPNG = GetPNG(OutputVars, ChosenPNGIndex);
-ChosenRelativePNG = ConvertPNGtoRelative(ChosenPNG, InputStruct.NStart, InputStruct.Delay);
+ChosenPNGWOInhib = GetPNGWOInhib(ChosenPNG, 800);
+ChosenRelativePNG = ConvertPNGtoRelative(ChosenPNGWOInhib, InputStruct.NStart, InputStruct.Delay);
 
 DisplayPNG(ChosenRelativePNG);
 

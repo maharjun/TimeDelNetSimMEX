@@ -209,6 +209,13 @@ void CombinationRadixSort(SimulationVars &SimVars);
 void ResetIntermediateVars(SimulationVars &SimVars);
 void PerformOutput(SimulationVars &SimVars, OutputVariables &OutVars);
 void GetPolychronousGroups(SimulationVars &SimVars, OutputVariables &OutVars);
+void WriteOutput(char *Format, ...);
+void AnalysePNGofCurrentCombination(
+	SimulationVars &SimVars,
+	PolyChrNeuronGroup &PNGCurr,
+	MexVector<Synapse> &SynapseSet,
+	uint64_T CombinationKey
+);
 
 }
 
